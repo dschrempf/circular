@@ -1,7 +1,4 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
-
--- TODO: Check comments and algorithm efficiencies.
 
 -- |
 -- Module      :  Data.Stack.Circular
@@ -38,7 +35,6 @@ import Control.Monad.ST
 import qualified Data.Vector as V
 import Data.Vector (Vector)
 import qualified Data.Vector.Mutable as M
-import GHC.Generics
 
 -- | Circular stacks with fxed maximum size are just normal vectors with a
 -- pointer to the last element.
@@ -57,7 +53,7 @@ data CStack a = CStack
     -- TODO: Remove this as it is contained in the vector and V.length is O(1).
     maxSize :: !Int
   }
-  deriving (Eq, Generic)
+  deriving (Eq)
 
 -- Calculate the start index of the stack.
 --
@@ -74,13 +70,6 @@ empty :: Int -> CStack a
 empty n
   | n <= 0 = error "empty: maximum size must be 1 or larger"
   | otherwise = CStack (V.create $ M.unsafeNew n) 0 0 n
-
--- -- | Yield a filled circular stack of give size (which is the maximum size) with
--- -- the same element. O(n).
--- replicate :: Int -> a -> CStack a
--- replicate n x
---   | n <= 0 = error "replicate: maximum size must be 1 or larger"
---   | otherwise = CStack (V.replicate n x) (n - 1) n n
 
 -- | Convert a circular stack to a vector. The first element of the returned
 -- vector is the deepest (oldest) element of the stack, the last element of the
