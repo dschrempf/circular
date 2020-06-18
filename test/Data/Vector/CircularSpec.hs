@@ -39,7 +39,7 @@ prop_from_to_id v
 
 prop_from_to_id_list :: Eq a => [a] -> Bool
 prop_from_to_id_list xs
-  | null xs   = True
+  | null xs = True
   | otherwise = toList (fromList xs) == xs
 
 spec :: Spec
@@ -48,27 +48,30 @@ spec = do
     $ it "doesn't choke on weird inputs"
     $ toVector vs `shouldBe` V.singleton 1
 
-  describe "conversion identities" $ do
-    prop
-      "fromVector . toVector is identity"
-      (prop_from_to_id :: Vector Int -> Bool)
-    prop "fromList . toList is identity" (prop_from_to_id_list :: [Int] -> Bool)
+  describe "conversion identities" $
+    do
+      prop
+        "fromVector . toVector is identity"
+        (prop_from_to_id :: Vector Int -> Bool)
+      prop "fromList . toList is identity" (prop_from_to_id_list :: [Int] -> Bool)
 
-  describe "conversion" $ do
-    it "correctly wraps around bounds" $
-      do
-        toVectorN 20 vs `shouldBe` V.replicate 20 1
-        V.length (toVectorN 109 vm) `shouldBe` 109
-        toListN 109 vm `shouldBe` ([0 .. 100] ++ [0 .. 7])
-        length (toListN 109 vm) `shouldBe` 109
-    it "fails to convert too short lists" $
-      evaluate (fromListN 100 []) `shouldThrow` anyErrorCall
+  describe "conversion" $
+    do
+      it "correctly wraps around bounds" $
+        do
+          toVectorN 20 vs `shouldBe` V.replicate 20 1
+          V.length (toVectorN 109 vm) `shouldBe` 109
+          toListN 109 vm `shouldBe` ([0 .. 100] ++ [0 .. 7])
+          length (toListN 109 vm) `shouldBe` 109
+      it "fails to convert too short lists" $
+        evaluate (fromListN 100 []) `shouldThrow` anyErrorCall
 
   describe "laziness"
     $ it "should not conflict with intuition"
     $ vl `shouldNotBe` put 10 vl
 
--- describe "warpping"
---   $ it "should work as expected for a few sample cases"
---   $ do
---     (shift 100 vl)
+  describe "shift"
+    $ it "should work as expected for a few sample cases"
+    $ do
+      toListN 1001 (shift 100 vl) `shouldBe` [100 .. 1000] ++ [0 .. 99]
+      toListN 8129 (shift 100 vl) `shouldBe` toListN 8129 (shift 1101 vl)

@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 -- |
 -- Module      :  Data.Vector.Circular
@@ -13,7 +14,7 @@
 -- Creation date: Thu Jun 18 10:00:28 2020.
 module Data.Vector.Circular
   ( -- * Boxed circular vectors
-    CVector (vector, index, size),
+    CVector (..),
 
     -- * Construction
     singleton,
@@ -48,17 +49,23 @@ where
 import Control.Monad.ST
 import qualified Data.Vector as V
 import Data.Vector (Vector)
+import GHC.Generics
 import qualified Data.Vector.Mutable as M
 import Prelude hiding (replicate)
 
 -- | Circular mutable vectors are just normal vectors with a pointer to a
 -- __selected element__. They can be used like a circular stack of fixed size.
+--
+-- The type constructor 'CVector' is exported to create, for example, orphan
+-- instances. However, construction of 'CVector's should happen with
+-- 'singleton', 'replicate', or type conversion functions so that the bounds are
+-- checked consistently.
 data CVector a = CVector
   { vector :: Vector a,
     index :: !Int,
     size :: !Int
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 -- | A circular vector with one element; pretty useless. O(1).
 singleton :: a -> CVector a
@@ -77,14 +84,15 @@ toVector (CVector v i n) = V.unsafeSlice i (n - i) v V.++ V.unsafeTake i v
 -- the bound. The first element of the returned vector is the current selected
 -- element. O(n).
 toVectorN :: Int -> CVector a -> Vector a
-toVectorN m (CVector v i n) = V.generate m (\j -> v V.! (i+j `mod` n))
+toVectorN m (CVector v i n) = V.generate m (\j -> v V.! ((i + j) `mod` n))
 
 -- | Select the first element. O(1).
 --
 -- The given vector must be non-empty.
 fromVector :: Vector a -> CVector a
-fromVector v | V.null v  = error "fromVector: empty vector"
-             | otherwise = CVector v 0 (V.length v)
+fromVector v
+  | V.null v = error "fromVector: empty vector"
+  | otherwise = CVector v 0 (V.length v)
 
 -- | Convert to a list with the selected element at the head. O(n).
 toList :: CVector a -> [a]
@@ -94,7 +102,7 @@ toList (CVector v i n) =
 -- | Convert to a list of given length with the selected element at the head.
 -- Wrap around the bound. O(n).
 toListN :: Int -> CVector a -> [a]
-toListN m (CVector v i n) = [ v V.! (i+j `mod` n) | j <- [0..(m-1)] ]
+toListN m (CVector v i n) = [v V.! ((i + j) `mod` n) | j <- [0 .. (m -1)]]
 
 -- | Convert a list to a vector and select the first element. O(n).
 --
