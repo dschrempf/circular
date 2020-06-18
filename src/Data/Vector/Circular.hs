@@ -139,10 +139,6 @@ getAt di (CVector v i n) = V.unsafeIndex v i'
 pop :: CVector a -> (a, CVector a)
 pop c = (get c, previous c)
 
--- Replace vector.
-replace :: Vector a -> CVector a -> CVector a
-replace v (CVector _ i n) = CVector v i n
-
 set :: Int -> a -> Vector a -> Vector a
 set i x = V.modify (\v -> M.write v i x)
 
@@ -167,11 +163,12 @@ put x (CVector v i n) = CVector (set i x v) i n
 --
 -- independent of @e@.
 unsafePut :: a -> CVector a -> CVector a
-unsafePut x c@(CVector v i _) = replace (unsafeSet i x v) c
+unsafePut x (CVector v i n) = CVector (unsafeSet i x v) i n
 
 -- | Replace the next element and shift the circular vector. O(n).
 push :: a -> CVector a -> CVector a
-push x = put x . next
+push x c | size c == 1 = singleton x
+         | otherwise   = put x $ next c
 
 -- | Replace the next element and shift the circular vector. O(1).
 --
@@ -180,7 +177,8 @@ push x = put x . next
 -- Further, @(pop . unsafePush)@ is not an identity because the next element was
 -- changed.
 unsafePush :: a -> CVector a -> CVector a
-unsafePush x = unsafePut x . next
+unsafePush x c | size c == 1 = singleton x
+               | otherwise   = unsafePut x $ next c
 
 -- | Select the next element. If the bound is reached, the first element is
 -- selected. O(1).
