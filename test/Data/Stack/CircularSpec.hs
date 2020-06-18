@@ -1,6 +1,6 @@
 -- |
 --   Module      :  Data.Stack.CircularSpec
---   Description :  Unit tests for Data.Vector.Circular
+--   Description :  Unit tests for Data.Stack.Circular
 --   Copyright   :  (c) Dominik Schrempf, 2020
 --   License     :  GPL-3.0-or-later
 --
@@ -20,58 +20,70 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Test.Hspec
 import Test.Hspec.QuickCheck
-import Prelude hiding (replicate)
+-- import Prelude hiding (replicate)
 import Test.QuickCheck.Instances.Vector ()
 
-vs :: CVector Int
-vs = singleton 1
+se :: CStack Int
+se = empty 10
 
-vm :: CVector Int
-vm = fromList [0 .. 100]
-
-vl :: CVector Int
-vl = fromList [0 .. 1000]
+ss :: CStack Int
+ss = push 13 se
 
 prop_from_to_id :: Eq a => Vector a -> Bool
 prop_from_to_id v
   | V.length v == 0 = True
   | otherwise = toVector (fromVector v) == v
 
-prop_from_to_id_list :: Eq a => [a] -> Bool
-prop_from_to_id_list xs
-  | null xs = True
-  | otherwise = toList (fromList xs) == xs
+prop_pop :: Eq a => Vector a -> Bool
+prop_pop v
+  | V.length v == 0 = True
+  | otherwise = toVector (snd $ pop $ fromVector v) == V.init v
+
+prop_push_pop :: Eq a => a -> Vector a -> Bool
+prop_push_pop x v
+  | V.length v == 0 = True
+  | otherwise = toVector (snd $ pop $ push x $ fromVector v) == V.tail v
+
+prop_push :: Eq a => a -> Vector a -> Bool
+prop_push x v
+  | V.length v == 0 = True
+  | otherwise = toVector (push x $ fromVector v) == V.tail v V.++ V.singleton x
+
+prop_many_pushes :: Eq a => [a] -> Vector a -> Bool
+prop_many_pushes xs v
+  | V.length v == 0 = True
+  | length xs <= V.length v = True
+  | otherwise =
+    toVector (foldr push (fromVector v) xs)
+      == V.fromList (reverse $ take (V.length v) xs)
 
 spec :: Spec
 spec = do
-  describe "construction"
-    $ it "doesn't choke on weird inputs"
-    $ toVector vs `shouldBe` V.singleton 1
+  describe "construction" $ it "doesn't choke on weird inputs" $ do
+    toVector se `shouldBe` V.empty
+    toVector (snd $ pop ss) `shouldBe` V.empty
 
-  describe "conversion identities" $
-    do
-      prop
-        "fromVector . toVector is identity"
-        (prop_from_to_id :: Vector Int -> Bool)
-      prop "fromList . toList is identity" (prop_from_to_id_list :: [Int] -> Bool)
+  describe "conversion identities" $ do
+    it "correctly converts partly filled stacks" $
+      toVector ss `shouldBe` V.singleton 13
+    prop "toVector . fromVector is identity" (prop_from_to_id :: Vector Int -> Bool)
 
-  describe "conversion" $
-    do
-      it "correctly wraps around bounds" $
-        do
-          toVectorN 20 vs `shouldBe` V.replicate 20 1
-          V.length (toVectorN 109 vm) `shouldBe` 109
-          toListN 109 vm `shouldBe` ([0 .. 100] ++ [0 .. 7])
-          length (toListN 109 vm) `shouldBe` 109
-      it "fails to convert too short lists" $
-        evaluate (fromListN 100 []) `shouldThrow` anyErrorCall
+  describe "conversion failure" $
+    it "fails to convert empty vectors" $
+      evaluate (fromVector V.empty) `shouldThrow` anyErrorCall
 
-  describe "laziness"
-    $ it "should not conflict with intuition"
-    $ vl `shouldNotBe` put 10 vl
+  describe "pop" $
+    prop "works on test cases" (prop_pop :: Vector Int -> Bool)
 
-  describe "shift"
-    $ it "should work as expected for a few sample cases"
-    $ do
-      toListN 1001 (shift 100 vl) `shouldBe` [100 .. 1000] ++ [0 .. 99]
-      toListN 8129 (shift 100 vl) `shouldBe` toListN 8129 (shift 1101 vl)
+  describe "push" $
+    prop "works on test cases" (prop_push :: Int -> Vector Int -> Bool)
+
+  describe "push pop" $
+    prop "works on test cases" (prop_push_pop :: Int -> Vector Int -> Bool)
+
+  describe "many pushes" $
+    prop "works on test cases" (prop_many_pushes :: [Int] -> Vector Int -> Bool)
+
+  describe "laziness" $
+    it "should not conflict with intuition" $
+    toVector ss `shouldNotBe` toVector (push 10 ss)
