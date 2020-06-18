@@ -1,0 +1,7 @@
+cradle:
+  stack:
+    - path: "src"
+      component: "circular:lib"
+
+    - path: "test"
+      component: "circular:test:circular-test"

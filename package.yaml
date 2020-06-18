@@ -18,6 +18,9 @@ dependencies:
 - base >= 4.7 && < 5
 - vector
 
+ghc-options:
+  - -Wall
+
 library:
   source-dirs: src
 
@@ -33,3 +36,5 @@ tests:
     - circular
     - hspec
     - hspec-discover
+    - QuickCheck
+    - quickcheck-instances
