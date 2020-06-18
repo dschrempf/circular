@@ -1,5 +1,5 @@
 -- |
---   Module      :  Data.Vector.CircularSpec
+--   Module      :  Data.Stack.CircularSpec
 --   Description :  Unit tests for Data.Vector.Circular
 --   Copyright   :  (c) Dominik Schrempf, 2020
 --   License     :  GPL-3.0-or-later
@@ -9,15 +9,15 @@
 --   Portability :  portable
 --
 -- Creation date: Thu Jun 18 10:21:28 2020.
-module Data.Vector.CircularSpec
+module Data.Stack.CircularSpec
   ( spec,
   )
 where
 
 import Control.Exception
+import Data.Stack.Circular
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import Data.Vector.Circular
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Prelude hiding (replicate)

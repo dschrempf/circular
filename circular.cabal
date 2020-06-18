@@ -27,7 +27,7 @@ source-repository head
 
 library
   exposed-modules:
-      Data.Vector.Circular
+      Data.Stack.Circular
   other-modules:
       Paths_circular
   hs-source-dirs:
@@ -42,7 +42,7 @@ test-suite circular-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Data.Vector.CircularSpec
+      Data.Stack.CircularSpec
       Paths_circular
   hs-source-dirs:
       test
