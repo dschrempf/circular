@@ -15,7 +15,7 @@
 -- Creation date: Thu Jun 18 10:00:28 2020.
 module Data.Stack.Circular
   ( -- * Boxed circular stacks
-    CStack (stack, index, curSize),
+    CStack (..),
 
     -- * Construction
     empty,
@@ -63,7 +63,8 @@ import Prelude hiding (product, sum)
 --
 -- Construction of 'CStack's is done with 'empty' and subsequent 'push'es, or
 -- the provided type conversion functions so that the index and bounds are
--- updated and checked consistently.
+-- updated and checked consistently. The data constructor 'CStack' is exported
+-- only to enable creation of orphan instances such as Arbitrary (QuickCheck).
 --
 -- When denoting the efficiency of the functions @m@ refers to the current size
 -- of the stack, and @n@ to the maximum size.
