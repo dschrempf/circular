@@ -69,6 +69,9 @@ data CStack v a = CStack
 instance (Eq (v a), Vector v a) => Eq (CStack v a) where
   (CStack v1 i1 m1) == (CStack v2 i2 m2) = (v1 == v2) && (i1 == i2) && (m1 == m2)
 
+instance (Show (v a), Vector v a) => Show (CStack v a) where
+  show c@(CStack _ i m) = "CStack {" ++ show (toVector c) ++", " ++ show i ++ ", " ++ show m ++ "}"
+
 -- Calculate the start index of the stack.
 --
 -- (startIndex + m - 1) `mod` n = i

@@ -76,6 +76,7 @@ prop_length c = V.length (toVector c) == curSize c
 spec :: Spec
 spec = do
   describe "construction" $ it "doesn't choke on weird inputs" $ do
+    print ss
     toVector se `shouldBe` V.empty
     toVector (snd $ pop ss) `shouldBe` V.empty
 
