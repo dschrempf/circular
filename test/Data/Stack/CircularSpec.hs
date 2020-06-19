@@ -19,13 +19,15 @@ module Data.Stack.CircularSpec
 where
 
 import Control.Exception
+import Data.Aeson
 import Data.Stack.Circular as C
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Test.Hspec
 import Test.Hspec.QuickCheck
-import Test.QuickCheck
+import Test.QuickCheck hiding (Success, Result)
 import Test.QuickCheck.Instances.Vector ()
+import Prelude hiding (sum, product)
 
 instance Arbitrary (CStack Vector Int) where
   arbitrary = do
@@ -73,6 +75,20 @@ prop_many_pushes xs v
 prop_length :: CStack Vector Int -> Bool
 prop_length c = V.length (toVector c) == curSize c
 
+jsonId :: CStack Vector Int -> Result (CStack Vector Int)
+jsonId c = fromJSON $ toJSON c
+
+prop_json_sum :: CStack Vector Int -> Bool
+prop_json_sum c = (sum <$> jsonId c) == Success (sum c)
+
+prop_json_product :: CStack Vector Int -> Bool
+prop_json_product c = (product <$> jsonId c) == Success (product c)
+
+-- Check current size and max size.
+prop_json_misc :: CStack Vector Int -> Bool
+prop_json_misc c = ((curSize <$> jsonId c) == Success (curSize c)) &&
+                   ((V.length . stack <$> jsonId c) == Success (V.length $ stack c))
+
 spec :: Spec
 spec = do
   describe "construction" $ it "doesn't choke on weird inputs" $ do
@@ -95,6 +111,9 @@ spec = do
     prop "push pop" prop_push_pop
     prop "many pushed" prop_many_pushes
     prop "length" prop_length
+    prop "json sum" prop_json_sum
+    prop "json product" prop_json_product
+    prop "json misc" prop_json_misc
 
   describe "laziness" $
     it "should not conflict with intuition" $

@@ -1,4 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- |
 -- Module      :  Data.Stack.Circular
@@ -44,6 +46,8 @@ module Data.Stack.Circular
   )
 where
 
+import Data.Aeson
+import Data.Aeson.Types
 import Control.Monad.ST
 import qualified Data.Vector.Generic as V
 import Data.Vector.Generic (Vector)
@@ -71,6 +75,24 @@ instance (Eq (v a), Vector v a) => Eq (CStack v a) where
 
 instance (Show (v a), Vector v a) => Show (CStack v a) where
   show c@(CStack _ i m) = "CStack {" ++ show (toVector c) ++", " ++ show i ++ ", " ++ show m ++ "}"
+
+-- | We have @c /= FromJSON $ ToJSON c@, but the elements on the stack and their
+-- order are correctly saved and restored.
+instance (ToJSON a, ToJSON (v a), Vector v a) => ToJSON (CStack v a) where
+  toJSON c = object ["stack" .= toVector c, "maxSize" .= n]
+    where n = V.length $ stack c
+  toEncoding c= pairs ("stack" .= toVector c <> "maxSize" .= n)
+    where n = V.length $ stack c
+
+instance (FromJSON a, FromJSON (v a), Vector v a) => FromJSON (CStack v a) where
+  parseJSON = withObject "CStack" fromObject
+
+fromObject :: forall v a . (FromJSON (v a), Vector v a) => Object -> Parser (CStack v a)
+fromObject o = do
+  v <- o .: "stack" :: Parser (v a)
+  n <- o .: "maxSize" :: Parser Int
+  let c = empty n
+  pure $ V.foldr' unsafePush c v
 
 -- Calculate the start index of the stack.
 --
