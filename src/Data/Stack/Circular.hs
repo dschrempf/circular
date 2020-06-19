@@ -27,6 +27,20 @@ module Data.Stack.Circular
     pop,
     push,
     unsafePush,
+
+    -- * Folding
+    --
+    -- Here all fold functions should be provided, but I am too lazy. Instead,
+    -- let's just provide some optimized functions to compute summary statistics
+    -- across all values on the stack.
+    --
+    -- For reasons of efficiency, __commutativity of the combining function is
+    -- assumed__ for fold-like functions provided in this section! That is, the
+    -- order of elements of the stack must not matter.
+    foldl1',
+    sum,
+    mean,
+    product,
   )
 where
 
@@ -34,6 +48,7 @@ import Control.Monad.ST
 import qualified Data.Vector.Generic as V
 import Data.Vector.Generic (Vector)
 import qualified Data.Vector.Generic.Mutable as M
+import Prelude hiding (product, sum)
 
 -- | Circular stacks with fxed maximum size are just normal vectors with a
 -- pointer to the last element.
@@ -46,7 +61,7 @@ import qualified Data.Vector.Generic.Mutable as M
 -- When denoting the efficiency of the functions @m@ refers to the current size
 -- of the stack, and @n@ to the maximum size.
 data CStack v a = CStack
-  { vector :: v a,
+  { stack :: v a,
     index :: !Int,
     curSize :: !Int
   }
@@ -81,7 +96,7 @@ toVector (CStack v i m)
   | i' + m <= n = V.unsafeSlice i' m v
   | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
   where
-    n  = V.length v
+    n = V.length v
     i' = startIndex i m n
 
 -- -- | Convert the last N elements of a circular stack to a vector. The first
@@ -122,7 +137,8 @@ previous (CStack v i m)
   | m == 0 = error "previous: empty stack"
   | i == 0 = CStack v (n - 1) (m - 1)
   | otherwise = CStack v (i - 1) (m - 1)
-  where n = V.length v
+  where
+    n = V.length v
 
 -- | Get the last element and remove it from the stack. O(1).
 --
@@ -144,7 +160,8 @@ next :: Vector v a => CStack v a -> CStack v a
 next (CStack v i m)
   | i == (n - 1) = CStack v 0 (min (m + 1) n)
   | otherwise = CStack v (i + 1) (min (m + 1) n)
-  where n = V.length v
+  where
+    n = V.length v
 
 -- | Push an element on the stack. O(n).
 push :: Vector v a => a -> CStack v a -> CStack v a
@@ -167,19 +184,40 @@ unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
 unsafePush :: Vector v a => a -> CStack v a -> CStack v a
 unsafePush x c = unsafePut x $ next c
 
--- TODO.
+-- | Compute summary statistics of the elements on the stack using a custom
+-- commutative `mappend` function.
+foldl1' :: Vector v a => (a -> a -> a) -> CStack v a -> a
+foldl1' f (CStack v i m)
+  | m == n = V.foldl1' f v
+  | i' + m <= n = V.foldl1' f $ V.unsafeSlice i' m v
+  | otherwise = f (V.foldl1' f (V.unsafeDrop i' v)) (V.foldl1' f (V.unsafeTake (i + 1) v))
+  where
+    n = V.length v
+    i' = startIndex i m n
 
--- | Here all fold functions should be provided, but I am too lazy. Instead,
--- let's just provide an optimized function to compute summary statistics across
--- all values on the stack.
+-- | Compute the sum of the elements on the stack.
+sum :: (Num a, Vector v a) => CStack v a -> a
+sum (CStack v i m)
+  | m == n = V.sum v
+  | i' + m <= n = V.sum $ V.unsafeSlice i' m v
+  | otherwise = V.sum (V.unsafeDrop i' v) + V.sum (V.unsafeTake (i + 1) v)
+  where
+    n = V.length v
+    i' = startIndex i m n
+
+-- | Compute the mean of the elements on the stack.
+mean :: (Real a, Vector v a, Fractional b) => CStack v a -> b
+mean c = realToFrac (sum c) / fromIntegral (curSize c)
+
+-- | Compute the product of the elements on the stack.
 --
 -- For reasons of efficiency, commutativity of the combining function is
 -- assumed. That is, the order of elements of the stack must not matter.
-compute :: (a -> b) -> CStack v a -> b
-compute = undefined
-
-sum :: CStack v a -> a
-sum = undefined
-
-product :: CStack v a -> a
-product = undefined
+product :: (Num a, Vector v a) => CStack v a -> a
+product (CStack v i m)
+  | m == n = V.product v
+  | i' + m <= n = V.product $ V.unsafeSlice i' m v
+  | otherwise = V.product (V.unsafeDrop i' v) * V.product (V.unsafeTake (i + 1) v)
+  where
+    n = V.length v
+    i' = startIndex i m n
