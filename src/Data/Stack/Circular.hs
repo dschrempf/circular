@@ -15,13 +15,14 @@
 -- Creation date: Thu Jun 18 10:00:28 2020.
 module Data.Stack.Circular
   ( -- * Boxed circular stacks
-    CStack (..),
+    CStack (stack, index, curSize),
 
     -- * Construction
     empty,
 
     -- * Conversion
     toVector,
+    toVectorN,
     fromVector,
 
     -- * Accessors
@@ -30,15 +31,18 @@ module Data.Stack.Circular
     push,
     unsafePush,
 
+    -- * Queries
+    isFull,
+
     -- * Folding
     --
     -- Here all fold functions should be provided, but I am too lazy. Instead,
     -- let's just provide some optimized functions to compute summary statistics
     -- across all values on the stack.
     --
-    -- For reasons of efficiency, __commutativity of the combining function is
-    -- assumed__ for fold-like functions provided in this section! That is, the
-    -- order of elements of the stack must not matter.
+    -- For reasons of efficiency, __commutativity__ of the combining function is
+    -- __assumed__ for fold-like functions provided in this section! That is,
+    -- the order of elements of the stack must not matter.
     foldl1',
     sum,
     mean,
@@ -46,9 +50,9 @@ module Data.Stack.Circular
   )
 where
 
+import Control.Monad.ST
 import Data.Aeson
 import Data.Aeson.Types
-import Control.Monad.ST
 import qualified Data.Vector.Generic as V
 import Data.Vector.Generic (Vector)
 import qualified Data.Vector.Generic.Mutable as M
@@ -57,10 +61,9 @@ import Prelude hiding (product, sum)
 -- | Circular stacks with fxed maximum size are just normal vectors with a
 -- pointer to the last element.
 --
--- The type constructor 'CStack' is exported to create, for example, orphan
--- instances. However, construction of 'CStack's should happen with 'empty' and
--- subsequent 'push'es, 'replicate', or the provided type conversion functions
--- so that the index and bounds are updated and checked consistently.
+-- Construction of 'CStack's is done with 'empty' and subsequent 'push'es, or
+-- the provided type conversion functions so that the index and bounds are
+-- updated and checked consistently.
 --
 -- When denoting the efficiency of the functions @m@ refers to the current size
 -- of the stack, and @n@ to the maximum size.
@@ -74,20 +77,22 @@ instance (Eq (v a), Vector v a) => Eq (CStack v a) where
   (CStack v1 i1 m1) == (CStack v2 i2 m2) = (v1 == v2) && (i1 == i2) && (m1 == m2)
 
 instance (Show (v a), Vector v a) => Show (CStack v a) where
-  show c@(CStack _ i m) = "CStack {" ++ show (toVector c) ++", " ++ show i ++ ", " ++ show m ++ "}"
+  show c@(CStack _ i m) = "CStack {" ++ show (toVector c) ++ ", " ++ show i ++ ", " ++ show m ++ "}"
 
 -- | We have @c /= FromJSON $ ToJSON c@, but the elements on the stack and their
 -- order are correctly saved and restored.
 instance (ToJSON a, ToJSON (v a), Vector v a) => ToJSON (CStack v a) where
   toJSON c = object ["stack" .= toVector c, "maxSize" .= n]
-    where n = V.length $ stack c
-  toEncoding c= pairs ("stack" .= toVector c <> "maxSize" .= n)
-    where n = V.length $ stack c
+    where
+      n = V.length $ stack c
+  toEncoding c = pairs ("stack" .= toVector c <> "maxSize" .= n)
+    where
+      n = V.length $ stack c
 
 instance (FromJSON a, FromJSON (v a), Vector v a) => FromJSON (CStack v a) where
   parseJSON = withObject "CStack" fromObject
 
-fromObject :: forall v a . (FromJSON (v a), Vector v a) => Object -> Parser (CStack v a)
+fromObject :: forall v a. (FromJSON (v a), Vector v a) => Object -> Parser (CStack v a)
 fromObject o = do
   v <- o .: "stack" :: Parser (v a)
   n <- o .: "maxSize" :: Parser Int
@@ -124,21 +129,24 @@ toVector (CStack v i m)
     n = V.length v
     i' = startIndex i m n
 
--- -- | Convert the last N elements of a circular stack to a vector. The first
--- -- element of the returned vector is the deepest (oldest) element of the stack,
--- -- the last element of the returned vector is the current (newest) element of
--- -- the stack. O(N).
--- --
--- -- The size of the stack must be larger than N.
--- toVectorN :: Int -> CStack a -> Vector a
--- toVectorN k (CStack v i m n)
---   | k < 0 = error "toVectorN: negative n"
---   | k > m = error "toVectorN: stack too small"
---   | k == 0 = V.empty
---   | i' + k <= n = V.unsafeSlice i' k v
---   | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
---   where
---     i' = startIndex i k n
+-- | Convert the last N elements of a circular stack to a vector. The first
+-- element of the returned vector is the deepest (oldest) element of the stack,
+-- the last element of the returned vector is the current (newest) element of
+-- the stack.
+--
+-- The size of the stack must be larger than N.
+--
+-- This is a relatively expensive operation. O(N).
+toVectorN :: Vector v a => Int -> CStack v a -> v a
+toVectorN k (CStack v i m)
+  | k < 0 = error "toVectorN: negative n"
+  | k > m = error "toVectorN: stack too small"
+  | k == 0 = V.empty
+  | i' + k <= n = V.unsafeSlice i' k v
+  | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
+  where
+    n = V.length v
+    i' = startIndex i k n
 
 -- | Convert a vector to a circular stack. The first element of the vector is
 -- the deepest (oldest) element of the stack, the last element of the vector is
@@ -208,6 +216,10 @@ unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
 -- not be used after this operation.
 unsafePush :: Vector v a => a -> CStack v a -> CStack v a
 unsafePush x c = unsafePut x $ next c
+
+-- | Check if the stack is full.
+isFull :: Vector v a => CStack v a -> Bool
+isFull (CStack v _ m) = V.length v == m
 
 -- | Compute summary statistics of the elements on the stack using a custom
 -- commutative `mappend` function.
