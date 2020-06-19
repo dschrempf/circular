@@ -31,9 +31,9 @@ module Data.Stack.Circular
 where
 
 import Control.Monad.ST
-import qualified Data.Vector as V
-import Data.Vector (Vector)
-import qualified Data.Vector.Mutable as M
+import qualified Data.Vector.Generic as V
+import Data.Vector.Generic (Vector)
+import qualified Data.Vector.Generic.Mutable as M
 
 -- | Circular stacks with fxed maximum size are just normal vectors with a
 -- pointer to the last element.
@@ -45,12 +45,14 @@ import qualified Data.Vector.Mutable as M
 --
 -- When denoting the efficiency of the functions @m@ refers to the current size
 -- of the stack, and @n@ to the maximum size.
-data CStack a = CStack
-  { vector :: Vector a,
+data CStack v a = CStack
+  { vector :: v a,
     index :: !Int,
     curSize :: !Int
   }
-  deriving (Eq)
+
+instance (Eq (v a), Vector v a) => Eq (CStack v a) where
+  (CStack v1 i1 m1) == (CStack v2 i2 m2) = (v1 == v2) && (i1 == i2) && (m1 == m2)
 
 -- -- TODO. Probably assume commutativity to make faster? Then the order of the
 -- -- vector does not have to be prepared.
@@ -67,7 +69,7 @@ startIndex i m n
 
 -- | A circular stack without an element but of a given maximum size. At this
 -- state, it is not very useful :). O(n).
-empty :: Int -> CStack a
+empty :: Vector v a => Int -> CStack v a
 empty n
   | n <= 0 = error "empty: maximum size must be 1 or larger"
   | otherwise = CStack (V.create $ M.unsafeNew n) 0 0
@@ -77,7 +79,7 @@ empty n
 -- returned vector is the current (newest) element of the stack.
 --
 -- This is a relatively expensive operation. O(m).
-toVector :: CStack a -> Vector a
+toVector :: Vector v a => CStack v a -> v a
 toVector (CStack v i m)
   | m == 0 = V.empty
   | i' + m <= n = V.unsafeSlice i' m v
@@ -107,7 +109,7 @@ toVector (CStack v i m)
 -- the current (newest) element of the stack. O(n).
 --
 -- The vector must be non-empty.
-fromVector :: Vector a -> CStack a
+fromVector :: Vector v a => v a -> CStack v a
 fromVector v
   | V.null v = error "fromVector: empty vector"
   | otherwise = CStack v (n - 1) n
@@ -115,11 +117,11 @@ fromVector v
     n = V.length v
 
 -- | Get the last element without changing the stack. O(1).
-get :: CStack a -> a
+get :: Vector v a => CStack v a -> a
 get (CStack v i _) = V.unsafeIndex v i
 
 -- Select the previous element without changing the stack.
-previous :: CStack a -> CStack a
+previous :: Vector v a => CStack v a -> CStack v a
 previous (CStack v i m)
   | m == 0 = error "previous: empty stack"
   | i == 0 = CStack v (n - 1) (m - 1)
@@ -129,41 +131,42 @@ previous (CStack v i m)
 -- | Get the last element and remove it from the stack. O(1).
 --
 -- The stack must be non-empty.
-pop :: CStack a -> (a, CStack a)
+pop :: Vector v a => CStack v a -> (a, CStack v a)
 pop c = (get c, previous c)
 
 -- Replace an element in a vector.
-set :: Int -> a -> Vector a -> Vector a
+set :: Vector v a => Int -> a -> v a -> v a
 set i x = V.modify (\v -> M.write v i x)
+{-# INLINE set #-}
 
 -- Replace the last element.
-put :: a -> CStack a -> CStack a
+put :: Vector v a => a -> CStack v a -> CStack v a
 put x (CStack v i m) = CStack (set i x v) i m
 
 -- Select the next element without changing the stack.
-next :: CStack a -> CStack a
+next :: Vector v a => CStack v a -> CStack v a
 next (CStack v i m)
   | i == (n - 1) = CStack v 0 (min (m + 1) n)
   | otherwise = CStack v (i + 1) (min (m + 1) n)
   where n = V.length v
 
 -- | Push an element on the stack. O(n).
-push :: a -> CStack a -> CStack a
+push :: Vector v a => a -> CStack v a -> CStack v a
 push x c = put x $ next c
 
-unsafeSet :: Int -> a -> Vector a -> Vector a
+unsafeSet :: Vector v a => Int -> a -> v a -> v a
 unsafeSet i x v = runST $ do
   mv <- V.unsafeThaw v
   M.unsafeWrite mv i x
   V.unsafeFreeze mv
 
 -- Replace the last element. O(1).
-unsafePut :: a -> CStack a -> CStack a
+unsafePut :: Vector v a => a -> CStack v a -> CStack v a
 unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
 
 -- | Push an element on the stack. O(1).
 --
 -- Be careful; the internal vector is mutated! The immutable circular stack may
 -- not be used after this operation.
-unsafePush :: a -> CStack a -> CStack a
+unsafePush :: Vector v a => a -> CStack v a -> CStack v a
 unsafePush x c = unsafePut x $ next c
