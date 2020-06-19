@@ -20,7 +20,6 @@ module Data.Stack.Circular
 
     -- * Conversion
     toVector,
-    toVectorN,
     fromVector,
 
     -- * Accessors
@@ -49,11 +48,13 @@ import qualified Data.Vector.Mutable as M
 data CStack a = CStack
   { vector :: Vector a,
     index :: !Int,
-    curSize :: !Int,
-    -- TODO: Remove this as it is contained in the vector and V.length is O(1).
-    maxSize :: !Int
+    curSize :: !Int
   }
   deriving (Eq)
+
+-- -- TODO. Probably assume commutativity to make faster? Then the order of the
+-- -- vector does not have to be prepared.
+-- instance Foldable CStack where
 
 -- Calculate the start index of the stack.
 --
@@ -69,34 +70,37 @@ startIndex i m n
 empty :: Int -> CStack a
 empty n
   | n <= 0 = error "empty: maximum size must be 1 or larger"
-  | otherwise = CStack (V.create $ M.unsafeNew n) 0 0 n
+  | otherwise = CStack (V.create $ M.unsafeNew n) 0 0
 
 -- | Convert a circular stack to a vector. The first element of the returned
 -- vector is the deepest (oldest) element of the stack, the last element of the
--- returned vector is the current (newest) element of the stack. O(m).
+-- returned vector is the current (newest) element of the stack.
+--
+-- This is a relatively expensive operation. O(m).
 toVector :: CStack a -> Vector a
-toVector (CStack v i m n)
+toVector (CStack v i m)
   | m == 0 = V.empty
   | i' + m <= n = V.unsafeSlice i' m v
   | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
   where
+    n  = V.length v
     i' = startIndex i m n
 
--- | Convert the last N elements of a circular stack to a vector. The first
--- element of the returned vector is the deepest (oldest) element of the stack,
--- the last element of the returned vector is the current (newest) element of
--- the stack. O(N).
---
--- The size of the stack must be larger than N.
-toVectorN :: Int -> CStack a -> Vector a
-toVectorN k (CStack v i m n)
-  | k < 0 = error "toVectorN: negative n"
-  | k > m = error "toVectorN: stack too small"
-  | k == 0 = V.empty
-  | i' + k <= n = V.unsafeSlice i' k v
-  | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
-  where
-    i' = startIndex i k n
+-- -- | Convert the last N elements of a circular stack to a vector. The first
+-- -- element of the returned vector is the deepest (oldest) element of the stack,
+-- -- the last element of the returned vector is the current (newest) element of
+-- -- the stack. O(N).
+-- --
+-- -- The size of the stack must be larger than N.
+-- toVectorN :: Int -> CStack a -> Vector a
+-- toVectorN k (CStack v i m n)
+--   | k < 0 = error "toVectorN: negative n"
+--   | k > m = error "toVectorN: stack too small"
+--   | k == 0 = V.empty
+--   | i' + k <= n = V.unsafeSlice i' k v
+--   | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
+--   where
+--     i' = startIndex i k n
 
 -- | Convert a vector to a circular stack. The first element of the vector is
 -- the deepest (oldest) element of the stack, the last element of the vector is
@@ -106,20 +110,21 @@ toVectorN k (CStack v i m n)
 fromVector :: Vector a -> CStack a
 fromVector v
   | V.null v = error "fromVector: empty vector"
-  | otherwise = CStack v (n - 1) n n
+  | otherwise = CStack v (n - 1) n
   where
     n = V.length v
 
 -- | Get the last element without changing the stack. O(1).
 get :: CStack a -> a
-get (CStack v i _ _) = V.unsafeIndex v i
+get (CStack v i _) = V.unsafeIndex v i
 
 -- Select the previous element without changing the stack.
 previous :: CStack a -> CStack a
-previous (CStack v i m n)
+previous (CStack v i m)
   | m == 0 = error "previous: empty stack"
-  | i == 0 = CStack v (n - 1) (m - 1) n
-  | otherwise = CStack v (i - 1) (m - 1) n
+  | i == 0 = CStack v (n - 1) (m - 1)
+  | otherwise = CStack v (i - 1) (m - 1)
+  where n = V.length v
 
 -- | Get the last element and remove it from the stack. O(1).
 --
@@ -133,20 +138,18 @@ set i x = V.modify (\v -> M.write v i x)
 
 -- Replace the last element.
 put :: a -> CStack a -> CStack a
-put x (CStack v i m n) = CStack (set i x v) i m n
+put x (CStack v i m) = CStack (set i x v) i m
 
 -- Select the next element without changing the stack.
 next :: CStack a -> CStack a
-next (CStack v i m n)
-  | i == (n - 1) = CStack v 0 (min (m + 1) n) n
-  | otherwise = CStack v (i + 1) (min (m + 1) n) n
+next (CStack v i m)
+  | i == (n - 1) = CStack v 0 (min (m + 1) n)
+  | otherwise = CStack v (i + 1) (min (m + 1) n)
+  where n = V.length v
 
 -- | Push an element on the stack. O(n).
 push :: a -> CStack a -> CStack a
-push x c
-  -- Be fast if the stack is a singleton.
-  | maxSize c == 1 = CStack (V.singleton x) 0 1 1
-  | otherwise = put x $ next c
+push x c = put x $ next c
 
 unsafeSet :: Int -> a -> Vector a -> Vector a
 unsafeSet i x v = runST $ do
@@ -156,14 +159,11 @@ unsafeSet i x v = runST $ do
 
 -- Replace the last element. O(1).
 unsafePut :: a -> CStack a -> CStack a
-unsafePut x (CStack v i m n) = CStack (unsafeSet i x v) i m n
+unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
 
 -- | Push an element on the stack. O(1).
 --
 -- Be careful; the internal vector is mutated! The immutable circular stack may
 -- not be used after this operation.
 unsafePush :: a -> CStack a -> CStack a
-unsafePush x c
-  -- Be fast if the stack is a singleton.
-  | maxSize c == 1 = CStack (V.singleton x) 0 1 1
-  | otherwise = unsafePut x $ next c
+unsafePush x c = unsafePut x $ next c
