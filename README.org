@@ -1,6 +1,6 @@
 * Circular
 
-#+html: <p align="center"><img src="https://travis-ci.org/dschrempf/circular.svg?branch=master" /></p>
+#+html: <p align="center"><img src="https://travis-ci.org/dschrempf/circular.svg?branch=master"/></p>
 
 Circular fixed-sized stacks.
 

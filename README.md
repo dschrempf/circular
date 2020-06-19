@@ -1,7 +1,7 @@
 
 # Circular
 
-<p align="center"><img src="https://travis-ci.org/dschrempf/circular.svg?branch=master" /></p>
+<p align="center"><img src="https://travis-ci.org/dschrempf/circular.svg?branch=master"/></p>
 
 Circular fixed-sized stacks.
 
