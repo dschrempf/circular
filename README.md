@@ -1,6 +1,8 @@
 
 # Circular
 
+<p align="center"><img src="https://travis-ci.org/dschrempf/circular.svg?branch=master" /></p>
+
 Circular fixed-sized stacks.
 
 Circular stacks with fxed maximum size are just normal vectors with a
