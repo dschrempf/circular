@@ -54,10 +54,6 @@ data CStack v a = CStack
 instance (Eq (v a), Vector v a) => Eq (CStack v a) where
   (CStack v1 i1 m1) == (CStack v2 i2 m2) = (v1 == v2) && (i1 == i2) && (m1 == m2)
 
--- -- TODO. Probably assume commutativity to make faster? Then the order of the
--- -- vector does not have to be prepared.
--- instance Foldable CStack where
-
 -- Calculate the start index of the stack.
 --
 -- (startIndex + m - 1) `mod` n = i
@@ -170,3 +166,20 @@ unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
 -- not be used after this operation.
 unsafePush :: Vector v a => a -> CStack v a -> CStack v a
 unsafePush x c = unsafePut x $ next c
+
+-- TODO.
+
+-- | Here all fold functions should be provided, but I am too lazy. Instead,
+-- let's just provide an optimized function to compute summary statistics across
+-- all values on the stack.
+--
+-- For reasons of efficiency, commutativity of the combining function is
+-- assumed. That is, the order of elements of the stack must not matter.
+compute :: (a -> b) -> CStack v a -> b
+compute = undefined
+
+sum :: CStack v a -> a
+sum = undefined
+
+product :: CStack v a -> a
+product = undefined
