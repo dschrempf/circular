@@ -5,3 +5,6 @@ cradle:
 
     - path: "test"
       component: "circular:test:circular-test"
+
+    - path: "bench"
+      component: "circular:bench:circular-bench"

@@ -58,3 +58,19 @@ test-suite circular-test
     , quickcheck-instances
     , vector
   default-language: Haskell2010
+
+benchmark circular-bench
+  type: exitcode-stdio-1.0
+  main-is: Bench.hs
+  other-modules:
+      Paths_circular
+  hs-source-dirs:
+      bench
+  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , circular
+    , criterion
+    , vector
+  default-language: Haskell2010
