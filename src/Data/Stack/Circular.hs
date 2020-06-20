@@ -30,6 +30,7 @@ module Data.Stack.Circular
     pop,
     push,
     unsafePush,
+    reset,
 
     -- * Queries
     isFull,
@@ -43,9 +44,9 @@ module Data.Stack.Circular
     -- For reasons of efficiency, __commutativity__ of the combining function is
     -- __assumed__ for fold-like functions provided in this section! That is,
     -- the order of elements of the stack must not matter.
+    foldl',
     foldl1',
     sum,
-    mean,
     product,
   )
 where
@@ -211,6 +212,10 @@ unsafeSet i x v = runST $ do
 unsafePut :: Vector v a => a -> CStack v a -> CStack v a
 unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
 
+-- | Reset the stack. O(1).
+reset :: CStack v a -> CStack v a
+reset (CStack v _ _) = CStack v 0 0
+
 -- | Push an element on the stack. O(1).
 --
 -- Be careful; the internal vector is mutated! The immutable circular stack may
@@ -221,6 +226,17 @@ unsafePush x c = unsafePut x $ next c
 -- | Check if the stack is full.
 isFull :: Vector v a => CStack v a -> Bool
 isFull (CStack v _ m) = V.length v == m
+
+-- | Compute summary statistics of the elements on the stack using a custom
+-- commutative function.
+foldl' :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> CStack v b -> a
+foldl' f x (CStack v i m)
+  | m == n = V.foldl' f x v
+  | i' + m <= n = V.foldl' f x $ V.unsafeSlice i' m v
+  | otherwise = V.foldl' f (V.foldl' f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
+  where
+    n = V.length v
+    i' = startIndex i m n
 
 -- | Compute summary statistics of the elements on the stack using a custom
 -- commutative `mappend` function.
@@ -243,14 +259,7 @@ sum (CStack v i m)
     n = V.length v
     i' = startIndex i m n
 
--- | Compute the mean of the elements on the stack.
-mean :: (Real a, Vector v a, Fractional b) => CStack v a -> b
-mean c = realToFrac (sum c) / fromIntegral (curSize c)
-
 -- | Compute the product of the elements on the stack.
---
--- For reasons of efficiency, commutativity of the combining function is
--- assumed. That is, the order of elements of the stack must not matter.
 product :: (Num a, Vector v a) => CStack v a -> a
 product (CStack v i m)
   | m == n = V.product v
