@@ -15,15 +15,26 @@ module Main
 where
 
 import Criterion.Main
-import Data.List
 import qualified Data.Stack.Circular as S
 import Data.Vector.Unboxed (Vector)
 
+-- When using foldl or foldl', list is much slower than cstack.
+
 list ::  Int -> Int
-list l = sum $ take 1000 $ foldl' (flip (:)) [] [0..l]
+list l = sum $ take 1000 $ foldl (flip (:)) [] [0..l]
 
 cstack ::  Int -> Int
-cstack l = S.sum $ foldl' (flip S.unsafePush) (S.empty 1000 :: S.CStack Vector Int) [0..l]
+cstack l = S.sum $ foldl (flip S.unsafePush) (S.empty 1000 :: S.CStack Vector Int) [0..l]
+
+-- -- When using foldr, cstack is slower by far. This is because of the
+-- -- lazyness. However, for stacks, by definition, the last added elements are
+-- -- of interest.
+
+-- listR ::  Int -> Int
+-- listR l = sum $ take 1000 $ foldr (:) [] [0..l]
+
+-- cstackR ::  Int -> Int
+-- cstackR l = S.sum $ foldr S.unsafePush (S.empty 1000 :: S.CStack Vector Int) [0..l]
 
 main :: IO ()
 main = do
@@ -31,5 +42,7 @@ main = do
   print $ list l
   print $ cstack l
   defaultMain
-    [ bench "list" $ whnf list l
-    , bench "cstack" $ whnf cstack l ]
+    [ bench "list, foldl" $ whnf list l
+    , bench "cstack, foldl" $ whnf cstack l ]
+    -- , bench "list, foldr" $ whnf listR l
+    -- , bench "cstack, foldr" $ whnf cstackR l ]
