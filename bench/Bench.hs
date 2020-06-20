@@ -16,33 +16,39 @@ where
 
 import Criterion.Main
 import qualified Data.Stack.Circular as S
-import Data.Vector.Unboxed (Vector)
+import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector as V
 
 -- When using foldl or foldl', list is much slower than cstack.
 
 list ::  Int -> Int
 list l = sum $ take 1000 $ foldl (flip (:)) [] [0..l]
 
-cstack ::  Int -> Int
-cstack l = S.sum $ foldl (flip S.unsafePush) (S.empty 1000 :: S.CStack Vector Int) [0..l]
+cstackV ::  Int -> Int
+cstackV l = S.sum $ foldl (flip S.unsafePush) (S.unsafeEmpty 1000 :: S.CStack V.Vector Int) [0..l]
 
--- -- When using foldr, cstack is slower by far. This is because of the
--- -- lazyness. However, for stacks, by definition, the last added elements are
--- -- of interest.
+cstackU ::  Int -> Int
+cstackU l = S.sum $ foldl (flip S.unsafePush) (S.unsafeEmpty 1000 :: S.CStack U.Vector Int) [0..l]
 
--- listR ::  Int -> Int
--- listR l = sum $ take 1000 $ foldr (:) [] [0..l]
+-- When using foldr, cstack is slower by far. This is because of the
+-- lazyness. However, for stacks, by definition, the last added elements are
+-- of interest.
 
--- cstackR ::  Int -> Int
--- cstackR l = S.sum $ foldr S.unsafePush (S.empty 1000 :: S.CStack Vector Int) [0..l]
+-- -- The safe operations are very slow.
+
+-- cstackVSafe ::  Int -> Int
+-- cstackVSafe l = S.sum $ foldl (flip S.push) (S.empty 1000 :: S.CStack V.Vector Int) [0..l]
+
+-- cstackUSafe ::  Int -> Int
+-- cstackUSafe l = S.sum $ foldl (flip S.push) (S.empty 1000 :: S.CStack U.Vector Int) [0..l]
+
 
 main :: IO ()
 main = do
   let l = 1000000 :: Int
   print $ list l
-  print $ cstack l
+  print $ cstackU l
   defaultMain
     [ bench "list, foldl" $ whnf list l
-    , bench "cstack, foldl" $ whnf cstack l ]
-    -- , bench "list, foldr" $ whnf listR l
-    -- , bench "cstack, foldr" $ whnf cstackR l ]
+    , bench "cstack, foldl" $ whnf cstackV l
+    , bench "cstack unboxed, foldl" $ whnf cstackU l ]
