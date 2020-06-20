@@ -40,12 +40,12 @@ module Data.Stack.Circular
 
     -- * Folding
     --
-    -- Here all fold functions should be provided, but I am too lazy. Instead,
+    -- | Here all fold functions should be provided, but I am too lazy. Instead,
     -- let's just provide some optimized functions to compute summary statistics
     -- across all values on the stack.
     --
-    -- For reasons of efficiency, __commutativity__ of the combining function is
-    -- __assumed__ for fold-like functions provided in this section! That is,
+    -- For reasons of efficiency, __commutativity__ of the combining function
+    -- is __assumed__ for fold-like functions provided in this section! That is,
     -- the order of elements of the stack must not matter.
     foldl,
     foldl',
