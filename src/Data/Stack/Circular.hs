@@ -13,33 +13,46 @@
 -- Portability :  portable
 --
 -- Creation date: Thu Jun 18 10:00:28 2020.
+--
+-- Construction of a mutable circular stack 'MCStack' is done with 'empty' and
+-- subsequent 'push'es, or the provided type conversion functions so that the
+-- index and bounds are updated and checked consistently.
+--
+-- Immutable circular stacks are provided, for example, to save, or restore a
+-- mutable circular stack.
+--
+-- The data constructors for 'MCStack' and 'CStack' are exported only to enable
+-- creation of orphan instances such as Arbitrary (QuickCheck).
+--
+--
+-- When denoting the efficiency of the functions @m@ refers to the current size
+-- of the stack, and @n@ to the maximum size.
 module Data.Stack.Circular
-  ( -- * Boxed circular stacks
+  ( -- * Circular stacks
+    MCStack (..),
     CStack (..),
 
     -- * Construction
     empty,
-    unsafeEmpty,
 
     -- * Conversion
     toVector,
     toVectorN,
-    unsafeToVectorN,
     fromVector,
-    unsafeFromVector,
+    thaw,
+    freeze,
 
     -- * Accessors
     get,
     pop,
     push,
-    unsafePush,
     reset,
 
     -- * Queries
     isFull,
 
     -- * Folding
-    --
+
     -- | Here all fold functions should be provided, but I am too lazy. Instead,
     -- let's just provide some optimized functions to compute summary statistics
     -- across all values on the stack.
@@ -47,36 +60,39 @@ module Data.Stack.Circular
     -- For reasons of efficiency, __commutativity__ of the combining function
     -- is __assumed__ for fold-like functions provided in this section! That is,
     -- the order of elements of the stack must not matter.
-    foldl,
-    foldl',
-    foldl1',
-    sum,
-    product,
+
+    -- TODO.
+    -- foldl,
+    -- foldl',
+    -- foldl1',
+    -- sum,
+    -- product,
   )
 where
 
+import Control.Monad.Primitive
 import Control.Monad.ST
 import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.Vector.Generic as V
-import Data.Vector.Generic (Vector)
+import Data.Vector.Generic (Mutable, Vector)
 import qualified Data.Vector.Generic.Mutable as M
 import Prelude hiding (foldl, product, sum)
 
--- | Circular stacks with fxed maximum size are just normal vectors with a
--- pointer to the last element.
---
--- Construction of 'CStack's is done with 'empty' and subsequent 'push'es, or
--- the provided type conversion functions so that the index and bounds are
--- updated and checked consistently. The data constructor 'CStack' is exported
--- only to enable creation of orphan instances such as Arbitrary (QuickCheck).
---
--- When denoting the efficiency of the functions @m@ refers to the current size
--- of the stack, and @n@ to the maximum size.
+-- | Mutable circular stacks with fixed maximum size are just mutable vectors
+-- with a pointer to the last element.
+data MCStack v s a = MCStack
+  { mStack :: Mutable v s a,
+    mIndex :: !Int,
+    mSize :: !Int
+  }
+
+-- | Immutable circular stack; useful, for example, to save, or restore a
+-- mutable circular stack.
 data CStack v a = CStack
-  { stack :: v a,
-    index :: !Int,
-    curSize :: !Int
+  { iStack :: v a,
+    iIndex :: !Int,
+    iSize :: !Int
   }
 
 instance (Eq (v a), Vector v a) => Eq (CStack v a) where
@@ -90,10 +106,10 @@ instance (Show (v a), Vector v a) => Show (CStack v a) where
 instance (ToJSON a, ToJSON (v a), Vector v a) => ToJSON (CStack v a) where
   toJSON c = object ["stack" .= toVector c, "maxSize" .= n]
     where
-      n = V.length $ stack c
+      n = V.length $ iStack c
   toEncoding c = pairs ("stack" .= toVector c <> "maxSize" .= n)
     where
-      n = V.length $ stack c
+      n = V.length $ iStack c
 
 instance (FromJSON a, FromJSON (v a), Vector v a) => FromJSON (CStack v a) where
   parseJSON = withObject "CStack" fromObject
@@ -102,8 +118,16 @@ fromObject :: forall v a. (FromJSON (v a), Vector v a) => Object -> Parser (CSta
 fromObject o = do
   v <- o .: "stack" :: Parser (v a)
   n <- o .: "maxSize" :: Parser Int
-  let c = empty n
-  pure $ V.foldr' unsafePush c v
+  let m = V.length v
+      v' =
+        if m < n
+          then runST $ do
+            mv <- V.unsafeThaw v :: ST s (Mutable v s a)
+            mv' <- M.grow mv (n - m)
+            V.unsafeFreeze mv'
+          else v
+  let i = if m < n then m -1 else n -1
+  return $ CStack v' i m
 
 -- Calculate the start index of the stack.
 --
@@ -114,22 +138,32 @@ startIndex i m n
   | m <= i + 1 = i + 1 - m
   | otherwise = i + 1 - m + n
 
--- -- Do not check for empty stack.
--- unsafeStartIndex :: Int -> Int -> Int -> Int
--- unsafeStartIndex i m n
---   | m <= i + 1 = i + 1 - m
---   | otherwise = i + 1 - m + n
-
 -- | A circular stack without an element but of a given maximum size. At this
 -- state, it is not very useful :). O(n).
-empty :: Vector v a => Int -> CStack v a
+empty :: (Vector v a, PrimMonad m) => Int -> m (MCStack v (PrimState m) a)
 empty n
   | n <= 0 = error "empty: maximum size must be 1 or larger"
-  | otherwise = CStack (V.create $ M.unsafeNew n) 0 0
+  | otherwise = do
+    v <- M.unsafeNew n
+    return $ MCStack v 0 0
 
--- | See 'empty'; do no check that length is strictly positive.
-unsafeEmpty :: Vector v a => Int -> CStack v a
-unsafeEmpty n = CStack (V.create $ M.unsafeNew n) 0 0
+-- -- | Convert a circular stack to a vector. The first element of the returned
+-- -- vector is the deepest (oldest) element of the stack, the last element of the
+-- -- returned vector is the current (newest) element of the stack.
+-- --
+-- -- This is a relatively expensive operation. O(m).
+-- toVector :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (v a)
+-- toVector (MCStack v i m)
+--   | m == 0 = return V.empty
+--   | i' + m <= n = V.freeze $ M.unsafeSlice i' m v
+--   | otherwise = do
+--       w <- M.new m
+--       sequence_ [ M.unsafeRead v j >>= M.unsafeWrite w (j-i') | j <- [i' .. (n-1)] ]
+--       sequence_ [ M.unsafeRead v j >>= M.unsafeWrite w (j+(n-1 - i'))  | j <- [0 .. i] ]
+--       V.unsafeFreeze w
+--   where
+--     n = M.length v
+--     i' = startIndex i m n
 
 -- | Convert a circular stack to a vector. The first element of the returned
 -- vector is the deepest (oldest) element of the stack, the last element of the
@@ -164,148 +198,137 @@ toVectorN k (CStack v i m)
     n = V.length v
     i' = startIndex i k n
 
--- | See 'toVectorN' but do not check that N is positive.
-unsafeToVectorN :: Vector v a => Int -> CStack v a -> v a
-unsafeToVectorN k (CStack v i m)
-  | k > m = error "toVectorN: stack too small"
-  | k == 0 = V.empty
-  | i' + k <= n = V.unsafeSlice i' k v
-  | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
-  where
-    n = V.length v
-    i' = startIndex i k n
-
 -- | Convert a vector to a circular stack. The first element of the vector is
 -- the deepest (oldest) element of the stack, the last element of the vector is
 -- the current (newest) element of the stack. O(n).
 --
 -- The vector must be non-empty.
-fromVector :: Vector v a => v a -> CStack v a
+fromVector :: (Vector v a, PrimMonad m) => v a -> m (MCStack v (PrimState m) a)
 fromVector v
   | V.null v = error "fromVector: empty vector"
-  | otherwise = CStack v (n - 1) n
+  | otherwise = do
+    mv <- V.thaw v
+    return $ MCStack mv (n - 1) n
   where
     n = V.length v
 
--- | See 'fromVector' but do not check for empty vector.
-unsafeFromVector :: Vector v a => v a -> CStack v a
-unsafeFromVector v = CStack v (n - 1) n
-  where
-    n = V.length v
+-- | Conversion from immutable to mutable circular stack. O(m).
+thaw :: (Vector v a, PrimMonad m) => CStack v a -> m (MCStack v (PrimState m) a)
+thaw (CStack v i m) = do
+  mv <- V.thaw v
+  return $ MCStack mv i m
+
+-- -- For internal use.
+-- unsafeThaw :: (Vector v a, PrimMonad m) => CStack v a -> m (MCStack v (PrimState m) a)
+-- unsafeThaw (CStack v i m) = do
+--   mv <- V.unsafeThaw v
+--   return $ MCStack mv i m
+
+-- | Conversion from mutable to immutable circular stack. O(m).
+freeze :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (CStack v a)
+freeze (MCStack mv i m) = do
+  v <- V.freeze mv
+  return $ CStack v i m
+
+-- -- For internal use.
+-- unsafeFreeze :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (CStack v a)
+-- unsafeFreeze (MCStack mv i m) = do
+--   v <- V.freeze mv
+--   return $ CStack v i m
 
 -- | Get the last element without changing the stack. O(1).
-get :: Vector v a => CStack v a -> a
-get (CStack v i _) = V.unsafeIndex v i
+get :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m a
+get (MCStack v i _) = M.unsafeRead v i
 {-# INLINE get #-}
 
 -- Select the previous element without changing the stack.
-previous :: Vector v a => CStack v a -> CStack v a
-previous (CStack v i m)
+previous :: Vector v a => MCStack v s a -> MCStack v s a
+previous (MCStack v i m)
   | m == 0 = error "previous: empty stack"
-  | i == 0 = CStack v (n - 1) (m - 1)
-  | otherwise = CStack v (i - 1) (m - 1)
+  | i == 0 = MCStack v (n - 1) (m - 1)
+  | otherwise = MCStack v (i - 1) (m - 1)
   where
-    n = V.length v
+    n = M.length v
 
 -- | Get the last element and remove it from the stack. O(1).
 --
 -- The stack must be non-empty.
-pop :: Vector v a => CStack v a -> (a, CStack v a)
-pop c = (get c, previous c)
+pop :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (a, MCStack v (PrimState m) a)
+pop c = do
+  x <- get c
+  return (x, previous c)
 {-# INLINE pop #-}
 
--- Replace an element in a vector.
-set :: Vector v a => Int -> a -> v a -> v a
-set i x = V.modify (\v -> M.write v i x)
-{-# INLINE set #-}
-
--- Replace the last element.
-put :: Vector v a => a -> CStack v a -> CStack v a
-put x (CStack v i m) = CStack (set i x v) i m
+-- Replace the current element.
+put :: (Vector v a, PrimMonad m) => a -> MCStack v (PrimState m) a -> m (MCStack v (PrimState m) a)
+put x (MCStack v i m) = M.unsafeWrite v i x >> return (MCStack v i m)
 
 -- Select the next element without changing the stack.
-next :: Vector v a => CStack v a -> CStack v a
-next (CStack v i m)
-  | i == (n - 1) = CStack v 0 (min (m + 1) n)
-  | otherwise = CStack v (i + 1) (min (m + 1) n)
+next :: Vector v a => MCStack v s a -> MCStack v s a
+next (MCStack v i m)
+  | i == (n - 1) = MCStack v 0 (min (m + 1) n)
+  | otherwise = MCStack v (i + 1) (min (m + 1) n)
   where
-    n = V.length v
+    n = M.length v
 
 -- | Push an element on the stack. Slow! If possible, use 'unsafePush'. O(n).
-push :: Vector v a => a -> CStack v a -> CStack v a
-push x c = put x $ next c
-
-unsafeSet :: Vector v a => Int -> a -> v a -> v a
-unsafeSet i x v = runST $ do
-  mv <- V.unsafeThaw v
-  M.unsafeWrite mv i x
-  V.unsafeFreeze mv
-
--- Replace the last element. O(1).
-unsafePut :: Vector v a => a -> CStack v a -> CStack v a
-unsafePut x (CStack v i m) = CStack (unsafeSet i x v) i m
-
--- | Push an element on the stack. O(1).
---
--- Be careful; the internal vector is mutated! The immutable circular stack may
--- not be used after this operation.
-unsafePush :: Vector v a => a -> CStack v a -> CStack v a
-unsafePush x = unsafePut x . next
+push :: (Vector v a, PrimMonad m) => a -> MCStack v (PrimState m) a -> m (MCStack v (PrimState m) a)
+push x = put x . next
 
 -- | Reset the stack. O(1).
-reset :: CStack v a -> CStack v a
-reset (CStack v _ _) = CStack v 0 0
+reset :: MCStack v s a -> MCStack v s a
+reset (MCStack v _ _) = MCStack v 0 0
 
 -- | Check if the stack is full.
-isFull :: Vector v a => CStack v a -> Bool
-isFull (CStack v _ m) = V.length v == m
+isFull :: Vector v a => MCStack v s a -> Bool
+isFull (MCStack v _ m) = M.length v == m
 
--- | Left fold. O(m).
-foldl :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> CStack v b -> a
-foldl f x (CStack v i m)
-  | m == n = V.foldl f x v
-  | i' + m <= n = V.foldl f x $ V.unsafeSlice i' m v
-  | otherwise = V.foldl f (V.foldl f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
-  where
-    n = V.length v
-    i' = startIndex i m n
+-- -- | Left fold. O(m).
+-- foldl :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> MCStack v s b -> a
+-- foldl f x (MCStack v i m)
+--   | m == n = V.foldl f x v
+--   | i' + m <= n = V.foldl f x $ V.unsafeSlice i' m v
+--   | otherwise = V.foldl f (V.foldl f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
+--   where
+--     n = V.length v
+--     i' = startIndex i m n
 
--- | Left fold with strict accumulator. O(m).
-foldl' :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> CStack v b -> a
-foldl' f x (CStack v i m)
-  | m == n = V.foldl' f x v
-  | i' + m <= n = V.foldl' f x $ V.unsafeSlice i' m v
-  | otherwise = V.foldl' f (V.foldl' f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
-  where
-    n = V.length v
-    i' = startIndex i m n
+-- -- | Left fold with strict accumulator. O(m).
+-- foldl' :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> MCStack v s b -> a
+-- foldl' f x (MCStack v i m)
+--   | m == n = V.foldl' f x v
+--   | i' + m <= n = V.foldl' f x $ V.unsafeSlice i' m v
+--   | otherwise = V.foldl' f (V.foldl' f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
+--   where
+--     n = V.length v
+--     i' = startIndex i m n
 
--- | Left fold on non-empty vectors with strict accumulator. O(m).
-foldl1' :: Vector v a => (a -> a -> a) -> CStack v a -> a
-foldl1' f (CStack v i m)
-  | m == n = V.foldl1' f v
-  | i' + m <= n = V.foldl1' f $ V.unsafeSlice i' m v
-  | otherwise = f (V.foldl1' f (V.unsafeDrop i' v)) (V.foldl1' f (V.unsafeTake (i + 1) v))
-  where
-    n = V.length v
-    i' = startIndex i m n
+-- -- | Left fold on non-empty vectors with strict accumulator. O(m).
+-- foldl1' :: Vector v a => (a -> a -> a) -> MCStack v s a -> a
+-- foldl1' f (MCStack v i m)
+--   | m == n = V.foldl1' f v
+--   | i' + m <= n = V.foldl1' f $ V.unsafeSlice i' m v
+--   | otherwise = f (V.foldl1' f (V.unsafeDrop i' v)) (V.foldl1' f (V.unsafeTake (i + 1) v))
+--   where
+--     n = V.length v
+--     i' = startIndex i m n
 
--- | Compute the sum of the elements on the stack. O(m).
-sum :: (Num a, Vector v a) => CStack v a -> a
-sum (CStack v i m)
-  | m == n = V.sum v
-  | i' + m <= n = V.sum $ V.unsafeSlice i' m v
-  | otherwise = V.sum (V.unsafeDrop i' v) + V.sum (V.unsafeTake (i + 1) v)
-  where
-    n = V.length v
-    i' = startIndex i m n
+-- -- | Compute the sum of the elements on the stack. O(m).
+-- sum :: (Num a, Vector v a) => MCStack v s a -> a
+-- sum (MCStack v i m)
+--   | m == n = V.sum v
+--   | i' + m <= n = V.sum $ V.unsafeSlice i' m v
+--   | otherwise = V.sum (V.unsafeDrop i' v) + V.sum (V.unsafeTake (i + 1) v)
+--   where
+--     n = V.length v
+--     i' = startIndex i m n
 
--- | Compute the product of the elements on the stack. O(m).
-product :: (Num a, Vector v a) => CStack v a -> a
-product (CStack v i m)
-  | m == n = V.product v
-  | i' + m <= n = V.product $ V.unsafeSlice i' m v
-  | otherwise = V.product (V.unsafeDrop i' v) * V.product (V.unsafeTake (i + 1) v)
-  where
-    n = V.length v
-    i' = startIndex i m n
+-- -- | Compute the product of the elements on the stack. O(m).
+-- product :: (Num a, Vector v a) => MCStack v s a -> a
+-- product (MCStack v i m)
+--   | m == n = V.product v
+--   | i' + m <= n = V.product $ V.unsafeSlice i' m v
+--   | otherwise = V.product (V.unsafeDrop i' v) * V.product (V.unsafeTake (i + 1) v)
+--   where
+--     n = V.length v
+--     i' = startIndex i m n
