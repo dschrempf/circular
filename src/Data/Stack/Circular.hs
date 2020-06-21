@@ -61,12 +61,9 @@ module Data.Stack.Circular
     -- is __assumed__ for fold-like functions provided in this section! That is,
     -- the order of elements of the stack must not matter.
 
-    -- TODO.
-    -- foldl,
-    -- foldl',
-    -- foldl1',
-    -- sum,
-    -- product,
+    foldl,
+    sum,
+    product,
   )
 where
 
@@ -74,9 +71,11 @@ import Control.Monad.Primitive
 import Control.Monad.ST
 import Data.Aeson
 import Data.Aeson.Types
+import qualified Data.Foldable as F
 import qualified Data.Vector.Generic as V
 import Data.Vector.Generic (Mutable, Vector)
 import qualified Data.Vector.Generic.Mutable as M
+import Data.Vector.Generic.Mutable (MVector)
 import Prelude hiding (foldl, product, sum)
 
 -- | Mutable circular stacks with fixed maximum size are just mutable vectors
@@ -283,52 +282,27 @@ reset (MCStack v _ _) = MCStack v 0 0
 isFull :: Vector v a => MCStack v s a -> Bool
 isFull (MCStack v _ m) = M.length v == m
 
--- -- | Left fold. O(m).
--- foldl :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> MCStack v s b -> a
--- foldl f x (MCStack v i m)
---   | m == n = V.foldl f x v
---   | i' + m <= n = V.foldl f x $ V.unsafeSlice i' m v
---   | otherwise = V.foldl f (V.foldl f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
---   where
---     n = V.length v
---     i' = startIndex i m n
+-- Left fold over a mutable vector. This is all a little stupid.
+foldlMV :: (MVector v b, PrimMonad m) => (a -> b -> a) -> a -> v (PrimState m) b -> m a
+foldlMV f x v = F.foldlM (\acc i -> M.read v i >>= \e -> return (f acc e)) x [0..(l-1)]
+  where l = M.length v
 
--- -- | Left fold with strict accumulator. O(m).
--- foldl' :: (Vector v a, Vector v b) => (a -> b -> a) -> a -> MCStack v s b -> a
--- foldl' f x (MCStack v i m)
---   | m == n = V.foldl' f x v
---   | i' + m <= n = V.foldl' f x $ V.unsafeSlice i' m v
---   | otherwise = V.foldl' f (V.foldl' f x (V.unsafeDrop i' v)) (V.unsafeTake (i + 1) v)
---   where
---     n = V.length v
---     i' = startIndex i m n
+-- | (Monadic) left fold. O(m).
+foldl :: (Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MCStack v (PrimState m) b -> m a
+foldl f x (MCStack v i m)
+  | m == n = foldlMV f x v
+  | i' + m <= n = foldlMV f x $ M.unsafeSlice i' m v
+  | otherwise = do
+      acc <- foldlMV f x $ M.unsafeDrop i' v
+      foldlMV f acc $ M.unsafeTake (i + 1) v
+  where
+    n = M.length v
+    i' = startIndex i m n
 
--- -- | Left fold on non-empty vectors with strict accumulator. O(m).
--- foldl1' :: Vector v a => (a -> a -> a) -> MCStack v s a -> a
--- foldl1' f (MCStack v i m)
---   | m == n = V.foldl1' f v
---   | i' + m <= n = V.foldl1' f $ V.unsafeSlice i' m v
---   | otherwise = f (V.foldl1' f (V.unsafeDrop i' v)) (V.foldl1' f (V.unsafeTake (i + 1) v))
---   where
---     n = V.length v
---     i' = startIndex i m n
+-- | Compute the sum of the elements on the stack. O(m).
+sum :: (Num a, Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m a
+sum = foldl (+) 0
 
--- -- | Compute the sum of the elements on the stack. O(m).
--- sum :: (Num a, Vector v a) => MCStack v s a -> a
--- sum (MCStack v i m)
---   | m == n = V.sum v
---   | i' + m <= n = V.sum $ V.unsafeSlice i' m v
---   | otherwise = V.sum (V.unsafeDrop i' v) + V.sum (V.unsafeTake (i + 1) v)
---   where
---     n = V.length v
---     i' = startIndex i m n
-
--- -- | Compute the product of the elements on the stack. O(m).
--- product :: (Num a, Vector v a) => MCStack v s a -> a
--- product (MCStack v i m)
---   | m == n = V.product v
---   | i' + m <= n = V.product $ V.unsafeSlice i' m v
---   | otherwise = V.product (V.unsafeDrop i' v) * V.product (V.unsafeTake (i + 1) v)
---   where
---     n = V.length v
---     i' = startIndex i m n
+-- | Compute the product of the elements on the stack. O(m).
+product :: (Num a, Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m a
+product = foldl (*) 1
