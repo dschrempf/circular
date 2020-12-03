@@ -1,6 +1,8 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- |
 -- Module      :  Data.Stack.Circular
@@ -14,52 +16,36 @@
 --
 -- Creation date: Thu Jun 18 10:00:28 2020.
 --
--- Construction of a mutable circular stack 'MCStack' is done with 'empty' and
--- subsequent 'push'es, or the provided type conversion functions so that the
--- index and bounds are updated and checked consistently.
+-- Construction of mutable circular stacks 'MStack' is done with 'empty' and
+-- subsequent 'push'es, or with 'fromVector'. Use the data constructors for
+-- 'MStack' and 'Stack' only if you know what you are doing.
 --
--- Immutable circular stacks are provided, for example, to save, or restore a
--- mutable circular stack.
---
--- The data constructors for 'MCStack' and 'CStack' are exported only to enable
--- creation of orphan instances such as Arbitrary (QuickCheck).
---
--- When denoting the efficiency of the functions @m@ refers to the current size
--- of the stack, and @n@ to the maximum size.
+-- When denoting the asymptotic runtime of functions, @n@ refers to the circular
+-- stack size.
 module Data.Stack.Circular
   ( -- * Circular stacks
-    MCStack (..),
-    CStack (..),
+    MStack (..),
+    Stack (..),
 
     -- * Construction
-    empty,
+    replicate,
 
     -- * Conversion
-    toVector,
-    toVectorN,
     fromVector,
+    toVector,
+    take,
     thaw,
     freeze,
 
     -- * Accessors
     get,
-    pop,
     push,
-    reset,
 
-    -- * Queries
-    isFull,
+    -- * Folds
 
-    -- * Folding
-
-    -- | Here all fold functions should be provided, but I am too lazy. Instead,
-    -- let's just provide some optimized functions to compute summary statistics
-    -- across all values on the stack.
-    --
-    -- For reasons of efficiency, __commutativity__ of the combining function
-    -- is __assumed__ for fold-like functions provided in this section! That is,
-    -- the order of elements of the stack must not matter.
-
+    -- | __Commutativity__ of the combining function is __assumed__ for
+    -- fold-like functions provided in this module, that is, the order of
+    -- elements of the stack must not matter!
     foldl,
     sum,
     product,
@@ -67,114 +53,73 @@ module Data.Stack.Circular
 where
 
 import Control.Monad.Primitive
-import Control.Monad.ST
 import Data.Aeson
-import Data.Aeson.Types
+import Data.Aeson.TH
 import qualified Data.Foldable as F
-import qualified Data.Vector.Generic as V
-import qualified Data.Vector.Generic as G
-import qualified Data.Vector.Generic.Mutable as M
-import Prelude hiding (foldl, product, sum)
+import qualified Data.Vector.Generic as VG
+import qualified Data.Vector.Generic.Mutable as VM
+import Prelude hiding (foldl, product, replicate, sum, take)
 
--- | Mutable circular stacks with fixed maximum size are just mutable vectors
--- with a pointer to the last element.
-data MCStack v s a = MCStack
-  { mStack :: G.Mutable v s a,
-    mIndex :: !Int,
-    mSize :: !Int
+-- | Mutable circular stacks with fixed size are just mutable vectors with a
+-- pointer to the last element.
+data MStack v s a = MStack
+  { mStack :: VG.Mutable v s a,
+    mIndex :: !Int
   }
 
 -- | Immutable circular stack; useful, for example, to save, or restore a
 -- mutable circular stack.
-data CStack v a = CStack
+data Stack v a = Stack
   { iStack :: v a,
-    iIndex :: !Int,
-    iSize :: !Int
+    iIndex :: !Int
   }
+  deriving (Eq, Read, Show)
 
-instance (Eq (v a), G.Vector v a) => Eq (CStack v a) where
-  (CStack v1 i1 m1) == (CStack v2 i2 m2) = (v1 == v2) && (i1 == i2) && (m1 == m2)
+$(return [])
 
-instance (Show (v a), G.Vector v a) => Show (CStack v a) where
-  show c@(CStack _ i m) = "CStack {" ++ show (toVector c) ++ ", " ++ show i ++ ", " ++ show m ++ "}"
+instance (FromJSON (v a)) => FromJSON (Stack v a) where
+  parseJSON = $(mkParseJSON defaultOptions ''Stack)
 
--- | We have @c /= FromJSON $ ToJSON c@, but the elements on the stack and their
--- order are correctly saved and restored.
-instance (ToJSON a, ToJSON (v a), G.Vector v a) => ToJSON (CStack v a) where
-  toJSON c = object ["stack" .= toVector c, "maxSize" .= n]
-    where
-      n = V.length $ iStack c
-  toEncoding c = pairs ("stack" .= toVector c <> "maxSize" .= n)
-    where
-      n = V.length $ iStack c
+instance (ToJSON (v a)) => ToJSON (Stack v a) where
+  toJSON = $(mkToJSON defaultOptions ''Stack)
+  toEncoding = $(mkToEncoding defaultOptions ''Stack)
 
-instance (FromJSON a, FromJSON (v a), G.Vector v a) => FromJSON (CStack v a) where
-  parseJSON = withObject "CStack" fromObject
-
-fromObject :: forall v a. (FromJSON (v a), G.Vector v a) => Object -> Parser (CStack v a)
-fromObject o = do
-  v <- o .: "stack" :: Parser (v a)
-  n <- o .: "maxSize" :: Parser Int
-  let m = V.length v
-      v' =
-        if m < n
-          then runST $ do
-            mv <- V.unsafeThaw v :: ST s (G.Mutable v s a)
-            mv' <- M.grow mv (n - m)
-            V.unsafeFreeze mv'
-          else v
-  let i = if m < n then m -1 else n -1
-  return $ CStack v' i m
-
--- Calculate the start index of the stack.
+-- | A circular stack of given size with the same element replicated.
 --
--- (startIndex + m - 1) `mod` n = i
-startIndex :: Int -> Int -> Int -> Int
-startIndex i m n
-  | m == 0 = error "startIndex: empty stack"
-  | m <= i + 1 = i + 1 - m
-  | otherwise = i + 1 - m + n
-
--- | A circular stack without an element but of a given maximum size. At this
--- state, it is not very useful :). O(n).
-empty :: (G.Vector v a, PrimMonad m) => Int -> m (MCStack v (PrimState m) a)
-empty n
-  | n <= 0 = error "empty: maximum size must be 1 or larger"
+-- Call 'error' if the maximum size is zero or negative.
+--
+-- O(n).
+replicate :: (VG.Vector v a, PrimMonad m) => Int -> a -> m (MStack v (PrimState m) a)
+replicate n x
+  | n <= 0 = error "empty: maximum size must be one or larger"
   | otherwise = do
-    v <- M.unsafeNew n
-    return $ MCStack v 0 0
+    v <- VM.replicate n x
+    return $ MStack v 0
 
--- -- | Convert a circular stack to a vector. The first element of the returned
--- -- vector is the deepest (oldest) element of the stack, the last element of the
--- -- returned vector is the current (newest) element of the stack.
--- --
--- -- This is a relatively expensive operation. O(m).
--- toVector :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (v a)
--- toVector (MCStack v i m)
---   | m == 0 = return V.empty
---   | i' + m <= n = V.freeze $ M.unsafeSlice i' m v
---   | otherwise = do
---       w <- M.new m
---       sequence_ [ M.unsafeRead v j >>= M.unsafeWrite w (j-i') | j <- [i' .. (n-1)] ]
---       sequence_ [ M.unsafeRead v j >>= M.unsafeWrite w (j+(n-1 - i'))  | j <- [0 .. i] ]
---       V.unsafeFreeze w
---   where
---     n = M.length v
---     i' = startIndex i m n
+-- | Convert a vector to a circular stack with size being equal to the length of
+-- the vector. The first element of the vector is the deepest (oldest) element
+-- of the stack, the last element of the vector is the current (newest) element
+-- of the stack.
+--
+-- The vector must be non-empty.
+--
+-- O(n).
+fromVector :: (VG.Vector v a, PrimMonad m) => v a -> m (MStack v (PrimState m) a)
+fromVector v
+  | n == 0 = error "fromVector: empty vector"
+  | otherwise = do
+    mv <- VG.thaw v
+    return $ MStack mv (n - 1)
+  where
+    n = VG.length v
 
 -- | Convert a circular stack to a vector. The first element of the returned
 -- vector is the deepest (oldest) element of the stack, the last element of the
 -- returned vector is the current (newest) element of the stack.
 --
--- Slow operation. O(m).
-toVector :: G.Vector v a => CStack v a -> v a
-toVector (CStack v i m)
-  | m == 0 = V.empty
-  | i' + m <= n = V.unsafeSlice i' m v
-  | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
-  where
-    n = V.length v
-    i' = startIndex i m n
+-- O(n).
+toVector :: VG.Vector v a => Stack v a -> v a
+toVector (Stack v i) = VG.unsafeDrop (i + 1) v VG.++ VG.unsafeTake (i + 1) v
 
 -- | Convert the last k elements of a circular stack to a vector. The first
 -- element of the returned vector is the deepest (oldest) element of the stack,
@@ -183,127 +128,81 @@ toVector (CStack v i m)
 --
 -- The size of the stack must be larger than k.
 --
--- Slow operation. O(k).
-toVectorN :: G.Vector v a => Int -> CStack v a -> v a
-toVectorN k (CStack v i m)
+-- O(k).
+take :: VG.Vector v a => Int -> Stack v a -> v a
+take k (Stack v i)
   | k < 0 = error "toVectorN: negative k"
-  | k > m = error "toVectorN: stack too small"
-  | k == 0 = V.empty
-  | i' + k <= n = V.unsafeSlice i' k v
-  | otherwise = V.unsafeDrop i' v V.++ V.unsafeTake (i + 1) v
+  | k > n = error "toVectorN: circular stack too small"
+  | k == 0 = VG.empty
+  | i0 == 0 = VG.unsafeTake k v
+  | i0 + k <= n = VG.unsafeSlice i0 k v
+  | otherwise = VG.unsafeDrop (i+1) v VG.++ VG.unsafeTake k' v
   where
-    n = V.length v
-    i' = startIndex i k n
+    n = VG.length v
+    -- Starting index.
+    i0 = (i + 1) `mod` n
+    -- Number of values already taken from the starting index to the end of the vector.
+    dk = n - i0
+    -- Number of values we still have to take.
+    k' = k - dk
 
--- | Convert a vector to a circular stack with maximum length being equal to the
--- length of the given vector. The first element of the vector is the deepest
--- (oldest) element of the stack, the last element of the vector is the current
--- (newest) element of the stack.
---
--- The vector must be non-empty.
+-- | Conversion from immutable to mutable circular stack.
 --
 -- O(n).
-fromVector :: (G.Vector v a, PrimMonad m) => v a -> m (MCStack v (PrimState m) a)
-fromVector v
-  | V.null v = error "fromVector: empty vector"
-  | otherwise = do
-    mv <- V.thaw v
-    return $ MCStack mv (n - 1) n
-  where
-    n = V.length v
+thaw :: (VG.Vector v a, PrimMonad m) => Stack v a -> m (MStack v (PrimState m) a)
+thaw (Stack v i) = do
+  mv <- VG.thaw v
+  return $ MStack mv i
 
--- | Conversion from immutable to mutable circular stack. O(m).
-thaw :: (G.Vector v a, PrimMonad m) => CStack v a -> m (MCStack v (PrimState m) a)
-thaw (CStack v i m) = do
-  mv <- V.thaw v
-  return $ MCStack mv i m
+-- | Conversion from mutable to immutable circular stack.
+--
+-- O(n).
+freeze :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (Stack v a)
+freeze (MStack mv i) = do
+  v <- VG.freeze mv
+  return $ Stack v i
 
--- -- For internal use.
--- unsafeThaw :: (Vector v a, PrimMonad m) => CStack v a -> m (MCStack v (PrimState m) a)
--- unsafeThaw (CStack v i m) = do
---   mv <- V.unsafeThaw v
---   return $ MCStack mv i m
-
--- | Conversion from mutable to immutable circular stack. O(m).
-freeze :: (G.Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (CStack v a)
-freeze (MCStack mv i m) = do
-  v <- V.freeze mv
-  return $ CStack v i m
-
--- -- For internal use.
--- unsafeFreeze :: (Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (CStack v a)
--- unsafeFreeze (MCStack mv i m) = do
---   v <- V.freeze mv
---   return $ CStack v i m
-
--- | Get the last element without changing the stack. O(1).
-get :: (G.Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m a
-get (MCStack v i _) = M.unsafeRead v i
+-- | Get the last element without changing the stack.
+--
+-- O(1).
+get :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
+get (MStack v i) = VM.unsafeRead v i
 {-# INLINE get #-}
 
--- Select the previous element without changing the stack.
-previous :: G.Vector v a => MCStack v s a -> MCStack v s a
-previous (MCStack v i m)
-  | m == 0 = error "previous: empty stack"
-  | i == 0 = MCStack v (n - 1) (m - 1)
-  | otherwise = MCStack v (i - 1) (m - 1)
-  where
-    n = M.length v
-
--- | Get the last element and remove it from the stack. O(1).
---
--- The stack must be non-empty.
-pop :: (G.Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m (a, MCStack v (PrimState m) a)
-pop c = do
-  x <- get c
-  return (x, previous c)
-{-# INLINE pop #-}
-
 -- Replace the current element.
-put :: (G.Vector v a, PrimMonad m) => a -> MCStack v (PrimState m) a -> m (MCStack v (PrimState m) a)
-put x (MCStack v i m) = M.unsafeWrite v i x >> return (MCStack v i m)
+put :: (VG.Vector v a, PrimMonad m) => a -> MStack v (PrimState m) a -> m (MStack v (PrimState m) a)
+put x (MStack v i) = VM.unsafeWrite v i x >> return (MStack v i)
 
 -- Select the next element without changing the stack.
-next :: G.Vector v a => MCStack v s a -> MCStack v s a
-next (MCStack v i m)
-  | i == (n - 1) = MCStack v 0 (min (m + 1) n)
-  | otherwise = MCStack v (i + 1) (min (m + 1) n)
+next :: VG.Vector v a => MStack v s a -> MStack v s a
+next (MStack v i) = MStack v i'
   where
-    n = M.length v
+    i' = (i + 1) `mod` VM.length v
 
--- | Push an element on the stack. Slow! If possible, use 'unsafePush'. O(n).
-push :: (G.Vector v a, PrimMonad m) => a -> MCStack v (PrimState m) a -> m (MCStack v (PrimState m) a)
+-- | Push an element on the stack.
+push :: (VG.Vector v a, PrimMonad m) => a -> MStack v (PrimState m) a -> m (MStack v (PrimState m) a)
 push x = put x . next
 
--- | Reset the stack. O(1).
-reset :: MCStack v s a -> MCStack v s a
-reset (MCStack v _ _) = MCStack v 0 0
-
--- | Check if the stack is full.
-isFull :: G.Vector v a => MCStack v s a -> Bool
-isFull (MCStack v _ m) = M.length v == m
-
 -- Left fold over a mutable vector. This is all a little stupid.
-foldlMV :: (M.MVector v b, PrimMonad m) => (a -> b -> a) -> a -> v (PrimState m) b -> m a
-foldlMV f x v = F.foldlM (\acc i -> M.read v i >>= \e -> return (f acc e)) x [0..(l-1)]
-  where l = M.length v
-
--- | (Monadic) left fold. O(m).
-foldl :: (G.Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MCStack v (PrimState m) b -> m a
-foldl f x (MCStack v i m)
-  | m == n = foldlMV f x v
-  | i' + m <= n = foldlMV f x $ M.unsafeSlice i' m v
-  | otherwise = do
-      acc <- foldlMV f x $ M.unsafeDrop i' v
-      foldlMV f acc $ M.unsafeTake (i + 1) v
+foldlMV :: (VM.MVector v b, PrimMonad m) => (a -> b -> a) -> a -> v (PrimState m) b -> m a
+foldlMV f x v = F.foldlM (\acc i -> f acc <$> VM.unsafeRead v i) x [0 .. (n -1)]
   where
-    n = M.length v
-    i' = startIndex i m n
+    n = VM.length v
 
--- | Compute the sum of the elements on the stack. O(m).
-sum :: (Num a, G.Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m a
+-- | Left fold.
+--
+-- O(n).
+foldl :: (VG.Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MStack v (PrimState m) b -> m a
+foldl f x (MStack v _) = foldlMV f x v
+
+-- | Compute the sum of the elements on the stack.
+--
+-- O(n).
+sum :: (Num a, VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
 sum = foldl (+) 0
 
--- | Compute the product of the elements on the stack. O(m).
-product :: (Num a, G.Vector v a, PrimMonad m) => MCStack v (PrimState m) a -> m a
+-- | Compute the product of the elements on the stack.
+--
+-- O(n).
+product :: (Num a, VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
 product = foldl (*) 1
