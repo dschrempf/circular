@@ -10,7 +10,7 @@
 --
 -- Creation date: Sat Jun 20 21:12:38 2020.
 module Main
-  ( main
+  ( main,
   )
 where
 
@@ -18,24 +18,24 @@ import Control.Monad.ST
 import Criterion.Main
 import Data.Foldable
 import qualified Data.Stack.Circular as C
-import qualified Data.Vector.Unboxed as U
 import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as U
 
 -- When using foldl or foldl', list is much slower than cstack.
 
-listFoldL ::  Int -> Int
-listFoldL l = sum $ take 1000 $ foldl (flip (:)) [] [0..l]
+listFoldL :: Int -> Int
+listFoldL l = sum $ take 1000 $ foldl (flip (:)) [] [0 .. l]
 
-cstackV ::  Int -> Int
+cstackV :: Int -> Int
 cstackV l = runST $ do
   c <- C.replicate 1000 0 :: ST s (C.MStack V.Vector s Int)
-  c' <- foldlM (flip C.push) c [0..l]
+  c' <- foldlM (flip C.push) c [0 .. l]
   C.sum c'
 
-cstackU ::  Int -> Int
+cstackU :: Int -> Int
 cstackU l = runST $ do
   c <- C.replicate 1000 0 :: ST s (C.MStack U.Vector s Int)
-  c' <- foldlM (flip C.push) c [0..l]
+  c' <- foldlM (flip C.push) c [0 .. l]
   C.sum c'
 
 -- When using foldr, cstack is slower by far. This is because list are lazy.
@@ -46,9 +46,10 @@ main = do
   print $ listFoldL l
   print $ cstackU l
   defaultMain
-    [ bench "list, foldl" $ whnf listFoldL l
-    , bench "cstack, foldl" $ whnf cstackV l
-    , bench "cstack unboxed, foldl" $ whnf cstackU l ]
+    [ bench "list, foldl" $ whnf listFoldL l,
+      bench "cstack, foldl" $ whnf cstackV l,
+      bench "cstack unboxed, foldl" $ whnf cstackU l
+    ]
 
 -- benchmarking list, foldl
 -- time                 196.5 ms   (169.7 ms .. 219.9 ms)
