@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+server="meganeura"
+path="/scratch/dominik/projects/circular/"
+exclude=$(cat <<EOF
+- .stack-work*/
+- .git/
+- dist-newstyle/
+EOF
+)

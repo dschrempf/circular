@@ -1,7 +1,11 @@
 * Changelog for circular
+** Unreleased changes
+
+** 0.2.0
+- Complete rewrite using mutable vectors. A monadic interface is required now,
+  but it is much cleaner in every other sense.
+
 ** 0.1.1
 - Remove =mean=.
 - Add benchmark.
 - Many small improvements.
-
-** Unreleased changes

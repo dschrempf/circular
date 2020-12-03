@@ -16,9 +16,9 @@
 --
 -- Creation date: Thu Jun 18 10:00:28 2020.
 --
--- Construction of mutable circular stacks 'MStack' is done with 'empty' and
--- subsequent 'push'es, or with 'fromVector'. Use the data constructors for
--- 'MStack' and 'Stack' only if you know what you are doing.
+-- Construction of mutable circular stacks is done with 'replicate' and subsequent
+-- 'push'es, or with 'fromVector'. Use the data constructors for 'MStack' and
+-- 'Stack' only if you know what you are doing.
 --
 -- When denoting the asymptotic runtime of functions, @n@ refers to the circular
 -- stack size.
@@ -39,6 +39,7 @@ module Data.Stack.Circular
 
     -- * Accessors
     get,
+    pop,
     push,
 
     -- * Folds
@@ -129,21 +130,24 @@ toVector (Stack v i) = VG.unsafeDrop (i + 1) v VG.++ VG.unsafeTake (i + 1) v
 -- The size of the stack must be larger than k.
 --
 -- O(k).
-take :: VG.Vector v a => Int -> Stack v a -> v a
-take k (Stack v i)
+take :: (VG.Vector v a, PrimMonad m) => Int -> MStack v (PrimState m) a -> m (v a)
+take k (MStack v i)
   | k < 0 = error "toVectorN: negative k"
   | k > n = error "toVectorN: circular stack too small"
-  | k == 0 = VG.empty
-  | i0 == 0 = VG.unsafeTake k v
-  | i0 + k <= n = VG.unsafeSlice i0 k v
-  | otherwise = VG.unsafeDrop (i+1) v VG.++ VG.unsafeTake k' v
+  | k == 0 = return VG.empty
+  | i0 == 0 = VG.freeze $ VM.unsafeTake k v
+  | i0 + k <= n = VG.freeze $ VM.unsafeSlice i0 k v
+  | otherwise = do
+    l <- VG.freeze (VM.unsafeDrop (i + 1) v)
+    r <- VG.freeze (VM.unsafeTake k' v)
+    return $ l VG.++ r
   where
-    n = VG.length v
+    n = VM.length v
     -- Starting index.
     i0 = (i + 1) `mod` n
-    -- Number of values already taken from the starting index to the end of the vector.
+    -- Number of elements already taken from the starting index to the end of the vector.
     dk = n - i0
-    -- Number of values we still have to take.
+    -- Number of elements we still have to take.
     k' = k - dk
 
 -- | Conversion from immutable to mutable circular stack.
@@ -162,12 +166,31 @@ freeze (MStack mv i) = do
   v <- VG.freeze mv
   return $ Stack v i
 
+-- Select the previous element without changing the stack.
+previous :: VG.Vector v a => MStack v s a -> MStack v s a
+previous (MStack v i) = MStack v i'
+  where
+    j = i - 1
+    i' = if j < 0 then VM.length v - 1 else j
+
 -- | Get the last element without changing the stack.
 --
 -- O(1).
 get :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
 get (MStack v i) = VM.unsafeRead v i
 {-# INLINE get #-}
+
+-- | Pop the current element from the stack and put the focus on the previous
+-- element.
+--
+-- Be careful: `pop` always succeeds, even if there are actually no more
+-- elements on the stack (similar to walking in a circle).
+--
+-- O(1).
+pop :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (a, MStack v (PrimState m) a)
+pop x = do
+  val <- get x
+  return (val, previous x)
 
 -- Replace the current element.
 put :: (VG.Vector v a, PrimMonad m) => a -> MStack v (PrimState m) a -> m (MStack v (PrimState m) a)
@@ -180,6 +203,8 @@ next (MStack v i) = MStack v i'
     i' = (i + 1) `mod` VM.length v
 
 -- | Push an element on the stack.
+--
+-- O(1).
 push :: (VG.Vector v a, PrimMonad m) => a -> MStack v (PrimState m) a -> m (MStack v (PrimState m) a)
 push x = put x . next
 
