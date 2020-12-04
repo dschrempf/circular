@@ -37,14 +37,9 @@ module Data.Stack.Circular
     pop,
     push,
 
-    -- ** Folds
-
-    -- | __Commutativity__ of the combining function is __assumed__ for
-    -- fold-like functions provided in this module, that is, the order of
-    -- elements of the stack must not matter!
-    foldl,
-    sum,
-    product,
+    -- ** Monadic folds
+    foldM,
+    foldKM,
 
     -- * Immutable circular stacks
     Stack (..),
@@ -56,7 +51,6 @@ where
 import Control.Monad.Primitive
 import Data.Aeson
 import Data.Aeson.TH
-import qualified Data.Foldable as F
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Generic.Mutable as VM
 import Prelude hiding (foldl, product, replicate, sum, take)
@@ -64,7 +58,7 @@ import Prelude hiding (foldl, product, replicate, sum, take)
 -- | Mutable circular stacks with fixed size are just mutable vectors with a
 -- pointer to the last element.
 data MStack v s a = MStack
-  { mStack :: VG.Mutable v s a,
+  { mVector :: VG.Mutable v s a,
     mIndex :: !Int
   }
 
@@ -81,9 +75,8 @@ replicate n x
     return $ MStack v 0
 
 -- | Convert a vector to a circular stack with size being equal to the length of
--- the vector. The first element of the vector is the deepest (oldest) element
--- of the stack, the last element of the vector is the current (newest) element
--- of the stack.
+-- the vector. The first element of the vector is the oldest element of the
+-- stack, the last element of the vector is the youngest element of the stack.
 --
 -- The vector must be non-empty.
 --
@@ -98,8 +91,8 @@ fromVector v
     n = VG.length v
 
 -- | Convert a circular stack to a vector. The first element of the returned
--- vector is the deepest (oldest) element of the stack, the last element of the
--- returned vector is the current (newest) element of the stack.
+-- vector is the oldest element of the stack, the last element of the returned
+-- vector is the youngest element of the stack.
 --
 -- O(n).
 toVector :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (v a)
@@ -107,12 +100,12 @@ toVector (MStack v i) = do
   l <- VG.freeze $ VM.unsafeDrop i' v
   r <- VG.freeze $ VM.unsafeTake i' v
   return $ l VG.++ r
-  where i' = i+1
+  where
+    i' = i + 1
 
 -- | Convert the last k elements of a circular stack to a vector. The first
--- element of the returned vector is the deepest (oldest) element of the stack,
--- the last element of the returned vector is the current (newest) element of
--- the stack.
+-- element of the returned vector is the oldest element of the stack, the last
+-- element of the returned vector is the youngest element of the stack.
 --
 -- The size of the stack must be larger than k.
 --
@@ -130,7 +123,7 @@ take k (MStack v i)
     -- The length of r is i'.
     r <- VG.freeze $ VM.unsafeTake i' v
     -- The length of l has to be k-i'. So we have to drop n-(k-i')=n+i0.
-    l <- VG.freeze $ VM.unsafeDrop (n+i0) v
+    l <- VG.freeze $ VM.unsafeDrop (n + i0) v
     return $ l VG.++ r
   where
     n = VM.length v
@@ -145,14 +138,14 @@ get :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
 get (MStack v i) = VM.unsafeRead v i
 {-# INLINE get #-}
 
--- Select the previous element without changing the stack.
+-- Select the previous older element without changing the stack.
 previous :: VG.Vector v a => MStack v s a -> MStack v s a
 previous (MStack v i) = MStack v i'
   where
     j = i - 1
     i' = if j < 0 then VM.length v - 1 else j
 
--- | Pop the current element from the stack and put the focus on the previous
+-- | Pop the youngest element from the stack and put the focus on the previous
 -- element.
 --
 -- Be careful:
@@ -170,11 +163,11 @@ pop x = do
   val <- get x
   return (val, previous x)
 
--- Replace the current element.
+-- Replace the youngest element.
 put :: (VG.Vector v a, PrimMonad m) => a -> MStack v (PrimState m) a -> m (MStack v (PrimState m) a)
 put x (MStack v i) = VM.unsafeWrite v i x >> return (MStack v i)
 
--- Select the next element without changing the stack.
+-- Select the next younger element without changing the stack.
 next :: VG.Vector v a => MStack v s a -> MStack v s a
 next (MStack v i) = MStack v i'
   where
@@ -186,35 +179,49 @@ next (MStack v i) = MStack v i'
 push :: (VG.Vector v a, PrimMonad m) => a -> MStack v (PrimState m) a -> m (MStack v (PrimState m) a)
 push x = put x . next
 
--- Left fold over a mutable vector. This is all a little stupid.
-foldlMV :: (VM.MVector v b, PrimMonad m) => (a -> b -> a) -> a -> v (PrimState m) b -> m a
-foldlMV f x v = F.foldlM (\acc i -> f acc <$> VM.unsafeRead v i) x [0 .. (n -1)]
+-- | Monadic fold from young to old over all elements of the stack.
+--
+-- Please also see the documentation of 'pop'.
+--
+-- O(n).
+foldM :: (VG.Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MStack v (PrimState m) b -> m a
+foldM f x s = foldKM n f x s
+  where n = VM.length $ mVector s
+
+-- Monadic fold over k elements in a vector.
+foldKV ::
+  (VM.MVector v b, PrimMonad m) =>
+  -- Number of elements to take.
+  Int ->
+  -- Current index.
+  Int ->
+  (a -> b -> a) ->
+  a ->
+  v (PrimState m) b ->
+  m a
+foldKV 0 _ _ x _ = return x
+foldKV k i f x v = do
+  x' <- f x <$> VM.unsafeRead v i
+  -- Assume that i-1 is non-negative.
+  foldKV (k-1) (i-1) f x' v
+
+-- | See 'foldM' but only over the @k@ youngest elements on the stack.
+--
+-- O(k).
+foldKM :: (VG.Vector v b, PrimMonad m) => Int -> (a -> b -> a) -> a -> MStack v (PrimState m) b -> m a
+foldKM k f x (MStack v i)
+  | k < 0 = error "foldKM: k is negative."
+  | k > n = error "foldKM: k is larger than the stack size."
+  -- We can do the fold in one go.
+  | k <= i' = foldKV k i f x v
+  -- Or not.
+  | otherwise = do
+      x' <- foldKV i' i f x v
+      -- Continue from the end of the vector.
+      foldKV (k-i') (n-1) f x' v
   where
     n = VM.length v
-
--- | Left fold over all elements of the stack.
---
--- Please see the documentation of 'pop'.
---
--- O(n).
-foldl :: (VG.Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MStack v (PrimState m) b -> m a
-foldl f x (MStack v _) = foldlMV f x v
-
--- | Compute the sum of the elements on the stack.
---
--- Please see the documentation of 'pop'.
---
--- O(n).
-sum :: (Num a, VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
-sum = foldl (+) 0
-
--- | Compute the product of the elements on the stack.
---
--- Please see the documentation of 'pop'.
---
--- O(n).
-product :: (Num a, VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
-product = foldl (*) 1
+    i' = i+1
 
 -- | Immutable circular stack; useful, for example, to save, or restore a
 -- mutable circular stack.

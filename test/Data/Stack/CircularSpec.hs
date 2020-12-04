@@ -23,6 +23,7 @@ import Control.Monad
 import Control.Monad.Primitive
 import Control.Monad.ST
 import Data.Aeson
+import Data.List
 import qualified Data.Stack.Circular as C
 import qualified Data.Vector as VB
 -- import Debug.Trace
@@ -46,6 +47,12 @@ se = C.replicate 10 0
 ss :: PrimMonad m => m (C.MStack VB.Vector (PrimState m) Int)
 ss = se >>= C.push 13
 
+s3 :: PrimMonad m => m (C.MStack VB.Vector (PrimState m) Int)
+s3 = ss >>= C.push 12 >>= C.push 11
+
+s3' :: PrimMonad m => m (C.MStack VB.Vector (PrimState m) Int)
+s3' = se >>= (fmap snd <$> C.pop) >>= C.push 1 >>= C.push 2 >>= C.push 3
+
 fromTo :: VB.Vector Int -> VB.Vector Int
 fromTo v = runST $ C.fromVector v >>= C.toVector
 
@@ -63,7 +70,7 @@ prop_push :: Int -> VB.Vector Int -> Bool
 prop_push x v
   | VB.length v == 0 = True
   | otherwise =
-    (runST $ C.fromVector v >>= C.push x >>= C.toVector)
+    runST (C.fromVector v >>= C.push x >>= C.toVector)
       == VB.tail v VB.++ VB.singleton x
 
 prop_many_pushes :: [Int] -> VB.Vector Int -> Bool
@@ -71,11 +78,12 @@ prop_many_pushes xs v
   | VB.length v == 0 = True
   | length xs <= VB.length v = True
   | otherwise =
-    ( runST $ do
-        ms <- C.fromVector v
-        ms' <- foldM (flip C.push) ms xs
-        C.toVector ms'
-    )
+    runST
+      ( do
+          ms <- C.fromVector v
+          ms' <- foldM (flip C.push) ms xs
+          C.toVector ms'
+      )
       == sol
   where
     nl = length xs
@@ -102,7 +110,7 @@ prop_push_take k l v
     --       ++ " Sol: "
     --       ++ show solution
     --   ) $
-      stackTake == solution
+    stackTake == solution
   where
     -- stackFull = runST $ do
     --   m <- C.fromVector v
@@ -129,6 +137,20 @@ prop_push_take k l v
         -- So we need to drop (nv - k' + nl) from the beginning of the vector.
           VB.drop (nv - k' + nl) v VB.++ VB.fromList l
 
+-- We initialize a stack, push some values and take some values.
+prop_fold_independent_of_index :: VB.Vector Int -> Bool
+prop_fold_independent_of_index v
+  | VB.length v == 0 = True
+  | otherwise = do
+    [solV] == nub solSs
+  where
+    n = VB.length v
+    solV = VB.sum v
+    solSs =
+      runST $ do
+        stack <- C.fromVector v
+        sequence [C.foldM (+) 0 (stack {C.mIndex = i}) | i <- [0 .. n - 1 :: Int]]
+
 spec :: Spec
 spec = do
   describe "construction" $
@@ -145,9 +167,21 @@ spec = do
     it "fails to convert empty vectors" $
       evaluate (runST $ C.fromVector VB.empty >>= C.freeze) `shouldThrow` anyErrorCall
 
+  describe "foldKM over end" $
+    it "works" $ do
+      runST (s3 >>= C.foldKM 1 (+) 0) `shouldBe` 11
+      runST (s3 >>= C.foldKM 2 (+) 0) `shouldBe` (11 + 12)
+      runST (s3 >>= C.foldKM 3 (+) 0) `shouldBe` (11 + 12 + 13)
+      runST (s3 >>= C.foldKM 4 (+) 0) `shouldBe` (11 + 12 + 13)
+      runST (s3 >>= C.foldKM 3 (*) 1) `shouldBe` (11 * 12 * 13)
+      runST (s3 >>= C.foldKM 4 (*) 1) `shouldBe` 0
+      runST (s3' >>= C.foldKM 3 (*) 1) `shouldBe` 6
+      runST (s3' >>= C.foldKM 4 (*) 1) `shouldBe` 0
+
   describe "properties" $ do
     prop "push" prop_push
     prop "push_get" prop_push_get
     prop "many pushes" prop_many_pushes
     prop "json" prop_json
     prop "push_take" prop_push_take
+    prop "fold_independent_of_index" prop_fold_independent_of_index

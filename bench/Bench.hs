@@ -30,13 +30,13 @@ cstackV :: Int -> Int
 cstackV l = runST $ do
   c <- C.replicate 1000 0 :: ST s (C.MStack V.Vector s Int)
   c' <- foldlM (flip C.push) c [0 .. l]
-  C.sum c'
+  C.foldM (+) 0 c'
 
 cstackU :: Int -> Int
 cstackU l = runST $ do
   c <- C.replicate 1000 0 :: ST s (C.MStack U.Vector s Int)
   c' <- foldlM (flip C.push) c [0 .. l]
-  C.sum c'
+  C.foldM (+) 0 c'
 
 -- When using foldr, cstack is slower by far. This is because list are lazy.
 

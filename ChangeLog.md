@@ -5,6 +5,12 @@
 ## Unreleased changes
 
 
+## 0.3.1
+
+-   Change monadic folds so that commutativity is not anymore required.
+-   Provide `foldKM`, a fold over the last k elements on the stack.
+
+
 ## 0.3.0
 
 -   Bugfix `take`.
