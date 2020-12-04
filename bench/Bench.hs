@@ -52,21 +52,21 @@ main = do
     ]
 
 -- benchmarking list, foldl
--- time                 196.5 ms   (169.7 ms .. 219.9 ms)
---                      0.983 R²   (0.933 R² .. 1.000 R²)
--- mean                 213.9 ms   (197.8 ms .. 238.8 ms)
--- std dev              25.51 ms   (10.44 ms .. 37.57 ms)
--- variance introduced by outliers: 31% (moderately inflated)
+-- time                 81.05 ms   (77.39 ms .. 85.31 ms)
+--                      0.995 R²   (0.989 R² .. 0.999 R²)
+-- mean                 86.91 ms   (83.37 ms .. 96.53 ms)
+-- std dev              9.154 ms   (2.550 ms .. 15.87 ms)
+-- variance introduced by outliers: 29% (moderately inflated)
 
 -- benchmarking cstack, foldl
--- time                 18.65 ms   (18.11 ms .. 19.24 ms)
---                      0.993 R²   (0.983 R² .. 0.999 R²)
--- mean                 18.46 ms   (18.13 ms .. 18.99 ms)
--- std dev              979.7 μs   (565.1 μs .. 1.446 ms)
--- variance introduced by outliers: 21% (moderately inflated)
+-- time                 14.92 ms   (14.82 ms .. 14.98 ms)
+--                      1.000 R²   (1.000 R² .. 1.000 R²)
+-- mean                 15.08 ms   (14.99 ms .. 15.55 ms)
+-- std dev              464.1 μs   (31.62 μs .. 1.007 ms)
+-- variance introduced by outliers: 11% (moderately inflated)
 
 -- benchmarking cstack unboxed, foldl
--- time                 13.97 ms   (13.91 ms .. 14.05 ms)
+-- time                 13.70 ms   (13.64 ms .. 13.77 ms)
 --                      1.000 R²   (1.000 R² .. 1.000 R²)
--- mean                 13.98 ms   (13.95 ms .. 14.02 ms)
--- std dev              86.51 μs   (61.56 μs .. 120.9 μs)
+-- mean                 13.66 ms   (13.64 ms .. 13.69 ms)
+-- std dev              62.64 μs   (44.97 μs .. 86.20 μs)

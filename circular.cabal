@@ -43,7 +43,7 @@ test-suite circular-test
       Paths_circular
   hs-source-dirs:
       test
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall
   build-depends:
       QuickCheck
     , aeson
@@ -63,7 +63,7 @@ benchmark circular-bench
       Paths_circular
   hs-source-dirs:
       bench
-  ghc-options: -Wall -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall
   build-depends:
       aeson
     , base >=4.7 && <5
