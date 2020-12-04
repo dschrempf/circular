@@ -50,7 +50,6 @@ module Data.Stack.Circular
     Stack (..),
     thaw,
     freeze,
-
   )
 where
 
@@ -105,9 +104,10 @@ fromVector v
 -- O(n).
 toVector :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (v a)
 toVector (MStack v i) = do
-  l <- VG.freeze $ VM.unsafeDrop (i + 1) v
-  r <- VG.freeze $ VM.unsafeTake (i + 1) v
+  l <- VG.freeze $ VM.unsafeDrop i' v
+  r <- VG.freeze $ VM.unsafeTake i' v
   return $ l VG.++ r
+  where i' = i+1
 
 -- | Convert the last k elements of a circular stack to a vector. The first
 -- element of the returned vector is the deepest (oldest) element of the stack,
@@ -122,20 +122,21 @@ take k (MStack v i)
   | k < 0 = error "toVectorN: negative k"
   | k > n = error "toVectorN: circular stack too small"
   | k == 0 = return VG.empty
-  | i0 == 0 = VG.freeze $ VM.unsafeTake k v
-  | i0 + k <= n = VG.freeze $ VM.unsafeSlice i0 k v
+  -- We know now that k is in [1, n] and check if all k elements can be taken in
+  -- one go.
+  | i0 >= 0 = VG.freeze $ VM.unsafeSlice i0 k v
+  -- Now we now that i0 is negative.
   | otherwise = do
-    l <- VG.freeze $ VM.unsafeDrop (i + 1) v
-    r <- VG.freeze $ VM.unsafeTake k' v
+    -- The length of r is i'.
+    r <- VG.freeze $ VM.unsafeTake i' v
+    -- The length of l has to be k-i'. So we have to drop n-(k-i')=n+i0.
+    l <- VG.freeze $ VM.unsafeDrop (n+i0) v
     return $ l VG.++ r
   where
     n = VM.length v
-    -- Starting index.
-    i0 = (i + 1) `mod` n
-    -- Number of elements already taken from the starting index to the end of the vector.
-    dk = n - i0
-    -- Number of elements we still have to take.
-    k' = k - dk
+    i' = i + 1
+    -- The starting index. Can be negative.
+    i0 = i' - k
 
 -- | Get the last element without changing the stack.
 --
