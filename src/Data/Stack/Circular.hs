@@ -103,8 +103,11 @@ fromVector v
 -- returned vector is the current (newest) element of the stack.
 --
 -- O(n).
-toVector :: VG.Vector v a => Stack v a -> v a
-toVector (Stack v i) = VG.unsafeDrop (i + 1) v VG.++ VG.unsafeTake (i + 1) v
+toVector :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (v a)
+toVector (MStack v i) = do
+  l <- VG.freeze $ VM.unsafeDrop (i + 1) v
+  r <- VG.freeze $ VM.unsafeTake (i + 1) v
+  return $ l VG.++ r
 
 -- | Convert the last k elements of a circular stack to a vector. The first
 -- element of the returned vector is the deepest (oldest) element of the stack,
@@ -122,8 +125,8 @@ take k (MStack v i)
   | i0 == 0 = VG.freeze $ VM.unsafeTake k v
   | i0 + k <= n = VG.freeze $ VM.unsafeSlice i0 k v
   | otherwise = do
-    l <- VG.freeze (VM.unsafeDrop (i + 1) v)
-    r <- VG.freeze (VM.unsafeTake k' v)
+    l <- VG.freeze $ VM.unsafeDrop (i + 1) v
+    r <- VG.freeze $ VM.unsafeTake k' v
     return $ l VG.++ r
   where
     n = VM.length v
