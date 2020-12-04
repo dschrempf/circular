@@ -23,26 +23,21 @@
 -- When denoting the asymptotic runtime of functions, @n@ refers to the circular
 -- stack size.
 module Data.Stack.Circular
-  ( -- * Circular stacks
+  ( -- * Mutable circular stacks
     MStack (..),
-    Stack (..),
 
-    -- * Construction
+    -- ** Construction and conversion
     replicate,
-
-    -- * Conversion
     fromVector,
     toVector,
     take,
-    thaw,
-    freeze,
 
-    -- * Accessors
+    -- ** Accessors
     get,
     pop,
     push,
 
-    -- * Folds
+    -- ** Folds
 
     -- | __Commutativity__ of the combining function is __assumed__ for
     -- fold-like functions provided in this module, that is, the order of
@@ -50,6 +45,12 @@ module Data.Stack.Circular
     foldl,
     sum,
     product,
+
+    -- * Immutable circular stacks
+    Stack (..),
+    thaw,
+    freeze,
+
   )
 where
 
@@ -67,23 +68,6 @@ data MStack v s a = MStack
   { mStack :: VG.Mutable v s a,
     mIndex :: !Int
   }
-
--- | Immutable circular stack; useful, for example, to save, or restore a
--- mutable circular stack.
-data Stack v a = Stack
-  { iStack :: v a,
-    iIndex :: !Int
-  }
-  deriving (Eq, Read, Show)
-
-$(return [])
-
-instance (FromJSON (v a)) => FromJSON (Stack v a) where
-  parseJSON = $(mkParseJSON defaultOptions ''Stack)
-
-instance (ToJSON (v a)) => ToJSON (Stack v a) where
-  toJSON = $(mkToJSON defaultOptions ''Stack)
-  toEncoding = $(mkToEncoding defaultOptions ''Stack)
 
 -- | A circular stack of given size with the same element replicated.
 --
@@ -150,21 +134,12 @@ take k (MStack v i)
     -- Number of elements we still have to take.
     k' = k - dk
 
--- | Conversion from immutable to mutable circular stack.
+-- | Get the last element without changing the stack.
 --
--- O(n).
-thaw :: (VG.Vector v a, PrimMonad m) => Stack v a -> m (MStack v (PrimState m) a)
-thaw (Stack v i) = do
-  mv <- VG.thaw v
-  return $ MStack mv i
-
--- | Conversion from mutable to immutable circular stack.
---
--- O(n).
-freeze :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (Stack v a)
-freeze (MStack mv i) = do
-  v <- VG.freeze mv
-  return $ Stack v i
+-- O(1).
+get :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
+get (MStack v i) = VM.unsafeRead v i
+{-# INLINE get #-}
 
 -- Select the previous element without changing the stack.
 previous :: VG.Vector v a => MStack v s a -> MStack v s a
@@ -173,18 +148,17 @@ previous (MStack v i) = MStack v i'
     j = i - 1
     i' = if j < 0 then VM.length v - 1 else j
 
--- | Get the last element without changing the stack.
---
--- O(1).
-get :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
-get (MStack v i) = VM.unsafeRead v i
-{-# INLINE get #-}
-
 -- | Pop the current element from the stack and put the focus on the previous
 -- element.
 --
--- Be careful: `pop` always succeeds, even if there are actually no more
--- elements on the stack (similar to walking in a circle).
+-- Be careful:
+--
+-- - The stack is always full! Popping returns the last element and moves the
+--   index to the second-last element, but the element is not truly removed from
+--   the stack. It is only put to the end of the queue.
+--
+-- - Hence, `pop` always succeeds, even if there are actually no more elements
+--   on the stack (similar to walking backwards in a circle).
 --
 -- O(1).
 pop :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (a, MStack v (PrimState m) a)
@@ -214,7 +188,9 @@ foldlMV f x v = F.foldlM (\acc i -> f acc <$> VM.unsafeRead v i) x [0 .. (n -1)]
   where
     n = VM.length v
 
--- | Left fold.
+-- | Left fold over all elements of the stack.
+--
+-- Please see the documentation of 'pop'.
 --
 -- O(n).
 foldl :: (VG.Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MStack v (PrimState m) b -> m a
@@ -222,12 +198,49 @@ foldl f x (MStack v _) = foldlMV f x v
 
 -- | Compute the sum of the elements on the stack.
 --
+-- Please see the documentation of 'pop'.
+--
 -- O(n).
 sum :: (Num a, VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
 sum = foldl (+) 0
 
 -- | Compute the product of the elements on the stack.
 --
+-- Please see the documentation of 'pop'.
+--
 -- O(n).
 product :: (Num a, VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m a
 product = foldl (*) 1
+
+-- | Immutable circular stack; useful, for example, to save, or restore a
+-- mutable circular stack.
+data Stack v a = Stack
+  { iStack :: v a,
+    iIndex :: !Int
+  }
+  deriving (Eq, Read, Show)
+
+$(return [])
+
+instance (FromJSON (v a)) => FromJSON (Stack v a) where
+  parseJSON = $(mkParseJSON defaultOptions ''Stack)
+
+instance (ToJSON (v a)) => ToJSON (Stack v a) where
+  toJSON = $(mkToJSON defaultOptions ''Stack)
+  toEncoding = $(mkToEncoding defaultOptions ''Stack)
+
+-- | Conversion from immutable to mutable circular stack.
+--
+-- O(n).
+thaw :: (VG.Vector v a, PrimMonad m) => Stack v a -> m (MStack v (PrimState m) a)
+thaw (Stack v i) = do
+  mv <- VG.thaw v
+  return $ MStack mv i
+
+-- | Conversion from mutable to immutable circular stack.
+--
+-- O(n).
+freeze :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (Stack v a)
+freeze (MStack mv i) = do
+  v <- VG.freeze mv
+  return $ Stack v i
