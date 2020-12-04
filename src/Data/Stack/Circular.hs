@@ -33,6 +33,7 @@ module Data.Stack.Circular
     take,
 
     -- ** Accessors
+    size,
     get,
     pop,
     push,
@@ -130,6 +131,10 @@ take k (MStack v i)
     i' = i + 1
     -- The starting index. Can be negative.
     i0 = i' - k
+
+-- | Size of the stack.
+size :: VG.Vector v a => MStack v s a -> Int
+size = VM.length . mVector
 
 -- | Get the last element without changing the stack.
 --
