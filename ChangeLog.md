@@ -5,6 +5,15 @@
 ## Unreleased changes
 
 
+## 0.3.0
+
+-   Bugfix `take`.
+-   Make functions more consistent (`fromVector` and `toVector` now both work on
+    mutable stacks).
+-   Sort functions.
+-   Improve documentation.
+
+
 ## 0.2.0
 
 -   Complete rewrite using mutable vectors. A monadic interface is required now,
