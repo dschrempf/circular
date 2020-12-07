@@ -5,6 +5,9 @@
 ## Unreleased changes
 
 
+## 0.3.1.1
+
+
 ## 0.3.1
 
 -   Change monadic folds so that commutativity is not anymore required.
