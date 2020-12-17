@@ -48,7 +48,6 @@ test-suite circular-test
     , base
     , circular
     , hspec
-    , hspec-discover
     , primitive
     , quickcheck-instances
     , vector
@@ -62,10 +61,8 @@ benchmark circular-bench
   hs-source-dirs: bench
   ghc-options: -Wall -Wunused-packages
   build-depends:
-      aeson
-    , base
+      base
     , circular
     , criterion
-    , primitive
     , vector
   default-language: Haskell2010
