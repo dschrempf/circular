@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-server="meganeura"
-path="/scratch/dominik/projects/circular/"
-exclude=$(cat <<EOF
+SERVER="meganeura"
+PATH_SERVER="/scratch/dominik/projects/circular/"
+EXCLUDE=$(cat <<EOF
 - .stack-work*/
 - .git/
 - dist-newstyle/
