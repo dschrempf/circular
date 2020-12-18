@@ -7,6 +7,8 @@
 
 ## 0.3.1.1
 
+Cabal changes, versioning changes.
+
 
 ## 0.3.1
 
