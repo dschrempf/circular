@@ -1,8 +1,14 @@
 
-# Changelog for circular
+# Revision history for circular
 
 
 ## Unreleased changes
+
+
+## 0.4.0.0
+
+-   Do not export data constructors nor record fields.
+-   `fromVectorWith`.
 
 
 ## 0.3.1.1

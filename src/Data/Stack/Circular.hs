@@ -17,18 +17,18 @@
 -- Creation date: Thu Jun 18 10:00:28 2020.
 --
 -- Construction of mutable circular stacks is done with 'replicate' and subsequent
--- 'push'es, or with 'fromVector'. Use the data constructors for 'MStack' and
--- 'Stack' only if you know what you are doing.
+-- 'push'es, or with 'fromVector'.
 --
 -- When denoting the asymptotic runtime of functions, @n@ refers to the circular
 -- stack size.
 module Data.Stack.Circular
   ( -- * Mutable circular stacks
-    MStack (..),
+    MStack,
 
     -- ** Construction and conversion
     replicate,
     fromVector,
+    fromVectorWithIndex,
     toVector,
     take,
 
@@ -43,7 +43,7 @@ module Data.Stack.Circular
     foldKM,
 
     -- * Immutable circular stacks
-    Stack (..),
+    Stack,
     thaw,
     freeze,
   )
@@ -59,8 +59,8 @@ import Prelude hiding (foldl, product, replicate, sum, take)
 -- | Mutable circular stacks with fixed size are just mutable vectors with a
 -- pointer to the last element.
 data MStack v s a = MStack
-  { mVector :: VG.Mutable v s a,
-    mIndex :: !Int
+  { _mVector :: VG.Mutable v s a,
+    _mIndex :: !Int
   }
 
 -- | A circular stack of given size with the same element replicated.
@@ -90,6 +90,19 @@ fromVector v
     return $ MStack mv (n - 1)
   where
     n = VG.length v
+
+-- | Convert a vector to a circular stack with size being equal to the length of
+-- the vector. The element of the vector at the given index is the youngest
+-- element of the stack, the next element of the vector is the oldest element of
+-- the stack.
+--
+-- The vector must be non-empty.
+--
+-- O(n).
+fromVectorWithIndex :: (VG.Vector v a, PrimMonad m) => Int -> v a -> m (MStack v (PrimState m) a)
+fromVectorWithIndex i v = do
+  ms <- fromVector v
+  return $ ms {_mIndex = i}
 
 -- | Convert a circular stack to a vector. The first element of the returned
 -- vector is the oldest element of the stack, the last element of the returned
@@ -134,7 +147,7 @@ take k (MStack v i)
 
 -- | Size of the stack.
 size :: VG.Vector v a => MStack v s a -> Int
-size = VM.length . mVector
+size = VM.length . _mVector
 
 -- | Get the last element without changing the stack.
 --
@@ -155,12 +168,12 @@ previous (MStack v i) = MStack v i'
 --
 -- Be careful:
 --
--- - The stack is always full! Popping returns the last element and moves the
---   index to the second-last element, but the element is not truly removed from
---   the stack. It is only put to the end of the queue.
+-- The stack is always full! Popping returns the last element and moves the
+-- index to the second-last element, but the element is not truly removed from
+-- the stack. It is only put to the end of the queue.
 --
--- - Hence, `pop` always succeeds, even if there are actually no more elements
---   on the stack (similar to walking backwards in a circle).
+-- Hence, `pop` always succeeds, even if there are actually no more elements on
+-- the stack (similar to walking backwards in a circle).
 --
 -- O(1).
 pop :: (VG.Vector v a, PrimMonad m) => MStack v (PrimState m) a -> m (a, MStack v (PrimState m) a)
@@ -191,7 +204,8 @@ push x = put x . next
 -- O(n).
 foldM :: (VG.Vector v b, PrimMonad m) => (a -> b -> a) -> a -> MStack v (PrimState m) b -> m a
 foldM f x s = foldKM n f x s
-  where n = VM.length $ mVector s
+  where
+    n = VM.length $ _mVector s
 
 -- Monadic fold over k elements in a vector.
 foldKV ::
@@ -208,7 +222,7 @@ foldKV 0 _ _ x _ = return x
 foldKV k i f x v = do
   x' <- f x <$> VM.unsafeRead v i
   -- Assume that i-1 is non-negative.
-  foldKV (k-1) (i-1) f x' v
+  foldKV (k -1) (i -1) f x' v
 
 -- | See 'foldM' but only over the @k@ youngest elements on the stack.
 --
@@ -221,18 +235,18 @@ foldKM k f x (MStack v i)
   | k <= i' = foldKV k i f x v
   -- Or not.
   | otherwise = do
-      x' <- foldKV i' i f x v
-      -- Continue from the end of the vector.
-      foldKV (k-i') (n-1) f x' v
+    x' <- foldKV i' i f x v
+    -- Continue from the end of the vector.
+    foldKV (k - i') (n -1) f x' v
   where
     n = VM.length v
-    i' = i+1
+    i' = i + 1
 
 -- | Immutable circular stack; useful, for example, to save, or restore a
 -- mutable circular stack.
 data Stack v a = Stack
-  { iStack :: v a,
-    iIndex :: !Int
+  { _iStack :: v a,
+    _iIndex :: !Int
   }
   deriving (Eq, Read, Show)
 

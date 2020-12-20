@@ -39,7 +39,7 @@ instance Arbitrary (C.Stack VB.Vector Int) where
     n <- choose (1, s + 1)
     v <- VB.fromList <$> vector n
     i <- choose (0, n -1)
-    return $ C.Stack v i
+    return $ runST $ C.fromVectorWithIndex i v >>= C.freeze
 
 se :: PrimMonad m => m (C.MStack VB.Vector (PrimState m) Int)
 se = C.replicate 10 0
@@ -147,9 +147,9 @@ prop_fold_independent_of_index v
     n = VB.length v
     solV = VB.sum v
     solSs =
-      runST $ do
-        stack <- C.fromVector v
-        sequence [C.foldM (+) 0 (stack {C.mIndex = i}) | i <- [0 .. n - 1 :: Int]]
+      runST $
+        sequence
+          [C.fromVectorWithIndex i v >>= C.foldM (+) 0 | i <- [0 .. n - 1 :: Int]]
 
 spec :: Spec
 spec = do
