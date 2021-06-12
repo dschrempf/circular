@@ -7,7 +7,7 @@
 -- |
 -- Module      :  Data.Stack.Circular
 -- Description :  Circular stacks of fixed size
--- Copyright   :  (c) 2020 Dominik Schrempf
+-- Copyright   :  (c) 2021 Dominik Schrempf
 -- License     :  GPL-3.0-or-later
 --
 -- Maintainer  :  dominik.schrempf@gmail.com

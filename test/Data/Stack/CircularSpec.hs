@@ -5,7 +5,7 @@
 -- |
 --   Module      :  Data.Stack.CircularSpec
 --   Description :  Unit tests for Data.Stack.Circular
---   Copyright   :  (c) Dominik Schrempf, 2020
+--   Copyright   :  (c) Dominik Schrempf, 2021
 --   License     :  GPL-3.0-or-later
 --
 --   Maintainer  :  dominik.schrempf@gmail.com
