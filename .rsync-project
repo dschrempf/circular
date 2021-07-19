@@ -8,3 +8,4 @@ EXCLUDE=$(cat <<EOF
 - dist-newstyle/
 EOF
 )
+GITIGNORE=TRUE
