@@ -10,23 +10,19 @@
       system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-
           haskellPackages = pkgs.haskellPackages;
-
           packageName = "circular";
         in
           {
-            packages.${packageName} =
-              haskellPackages.callCabal2nix packageName self rec {
-              };
+            packages.${packageName} = haskellPackages.callCabal2nix
+              packageName self rec {};
 
             defaultPackage = self.packages.${system}.${packageName};
 
             devShell = pkgs.mkShell {
               buildInputs = with haskellPackages; [
                 haskell-language-server
-                ghcid
-                cabal-install
+                stack
               ];
               inputsFrom = builtins.attrValues self.packages.${system};
             };
