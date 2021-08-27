@@ -9,9 +9,9 @@
     flake-utils.lib.eachDefaultSystem (
       system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          haskellPackages = pkgs.haskellPackages;
           packageName = "circular";
+          pkgs = import nixpkgs { inherit system; };
+          haskellPackages = pkgs.haskellPackages;
           pkg = self.packages.${system}.${packageName};
         in
           {
