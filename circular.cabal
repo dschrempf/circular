@@ -40,6 +40,8 @@ test-suite circular-test
   other-modules:
       Data.Stack.CircularSpec
       Paths_circular
+  autogen-modules:
+      Paths_circular
   hs-source-dirs: test
   ghc-options: -Wall -Wunused-packages
   build-depends:
@@ -57,6 +59,8 @@ benchmark circular-bench
   type: exitcode-stdio-1.0
   main-is: Bench.hs
   other-modules:
+      Paths_circular
+  autogen-modules:
       Paths_circular
   hs-source-dirs: bench
   ghc-options: -Wall -Wunused-packages
