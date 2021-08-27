@@ -12,15 +12,22 @@
           packageName = "circular";
           pkgs = import nixpkgs { inherit system; };
           haskellPackages = pkgs.haskellPackages;
-          pkg = self.packages.${system}.${packageName};
+          circular = self.packages.${system}.${packageName};
+          circular-dev = pkgs.haskell.lib.doBenchmark circular;
         in
           {
             packages.${packageName} = haskellPackages.callCabal2nix
               packageName self rec {};
 
-            defaultPackage = pkg;
+            defaultPackage = circular;
 
-            devShell = (pkgs.haskell.lib.doBenchmark pkg).env;
+            devShell = pkgs.haskellPackages.shellFor {
+              packages = _: [ circular-dev ];
+              buildInputs = with pkgs; [
+                haskellPackages.cabal-install
+                haskellPackages.haskell-language-server
+              ];
+            };
           }
     );
 }
