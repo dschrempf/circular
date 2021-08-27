@@ -9,15 +9,13 @@
     flake-utils.lib.eachDefaultSystem (
       system:
         let
-          packageName = "circular";
           pkgs = import nixpkgs { inherit system; };
           haskellPackages = pkgs.haskellPackages;
-          circular = self.packages.${system}.${packageName};
+          circular = haskellPackages.callCabal2nix "circular" self rec {};
           circular-dev = pkgs.haskell.lib.doBenchmark circular;
         in
           {
-            packages.${packageName} = haskellPackages.callCabal2nix
-              packageName self rec {};
+            packages.circular = circular;
 
             defaultPackage = circular;
 
@@ -27,6 +25,7 @@
                 haskellPackages.cabal-install
                 haskellPackages.haskell-language-server
               ];
+              doBenchmark = true;
             };
           }
     );
