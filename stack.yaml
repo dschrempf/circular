@@ -1,6 +1,8 @@
-resolver: lts-18.7
+resolver: lts-18.8
 
 packages:
 - .
 
 nix:
+  add-gc-roots: true
+
