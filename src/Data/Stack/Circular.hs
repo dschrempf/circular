@@ -250,6 +250,11 @@ data Stack v a = Stack
   }
   deriving (Eq, Read, Show)
 
+-- This (per se useless) top level splice separates the module into two
+-- declaration groups. This is required, because the expression slices below
+-- (which are now in the second declaration group) can only refer to definitions
+-- outside their own declaration group. See
+-- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/template_haskell.html.
 $(return [])
 
 instance (FromJSON (v a)) => FromJSON (Stack v a) where
