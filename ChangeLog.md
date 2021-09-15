@@ -5,6 +5,12 @@
 ## Unreleased changes
 
 
+## 0.4.0.1
+
+-   Minor changes mostly related to tooling.
+-   Nix support.
+
+
 ## 0.4.0.0
 
 -   Do not export data constructors nor record fields.

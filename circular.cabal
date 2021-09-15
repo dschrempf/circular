@@ -1,6 +1,6 @@
 cabal-version:  2.0
 name:           circular
-version:        0.4.0.0
+version:        0.4.0.1
 synopsis:       Circular fixed-sized mutable vectors
 description:    Please see the README at <https://github.com/dschrempf/circular#readme>
 category:       Math, Data Structures
