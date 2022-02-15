@@ -1,4 +1,4 @@
-cabal-version:  2.0
+cabal-version:  3.0
 name:           circular
 version:        0.4.0.1
 synopsis:       Circular fixed-sized mutable vectors
@@ -9,7 +9,7 @@ bug-reports:    https://github.com/dschrempf/circular/issues
 author:         Dominik Schrempf
 maintainer:     dominik.schrempf@gmail.com
 copyright:      Dominik Schrempf (2021)
-license:        BSD3
+license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
