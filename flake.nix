@@ -14,7 +14,7 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
-        hpkgs = pkgs.haskellPackages;
+        hpkgs = pkgs.haskell.packages.ghc921;
         circular = hpkgs.callCabal2nix "circular" self rec { };
         circular-dev = pkgs.haskell.lib.doBenchmark circular;
       in
