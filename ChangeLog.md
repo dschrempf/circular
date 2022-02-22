@@ -5,6 +5,11 @@
 ## Unreleased changes
 
 
+## 0.4.0.2
+
+-   Tooling updtes related to GHC 9.2.1.
+
+
 ## 0.4.0.1
 
 -   Minor changes mostly related to tooling.
