@@ -72,8 +72,8 @@ replicate :: (VG.Vector v a, PrimMonad m) => Int -> a -> m (MStack v (PrimState 
 replicate n x
   | n <= 0 = error "empty: maximum size must be one or larger"
   | otherwise = do
-    v <- VM.replicate n x
-    return $ MStack v 0
+      v <- VM.replicate n x
+      return $ MStack v 0
 
 -- | Convert a vector to a circular stack with size being equal to the length of
 -- the vector. The first element of the vector is the oldest element of the
@@ -86,8 +86,8 @@ fromVector :: (VG.Vector v a, PrimMonad m) => v a -> m (MStack v (PrimState m) a
 fromVector v
   | n == 0 = error "fromVector: empty vector"
   | otherwise = do
-    mv <- VG.thaw v
-    return $ MStack mv (n - 1)
+      mv <- VG.thaw v
+      return $ MStack mv (n - 1)
   where
     n = VG.length v
 
@@ -134,11 +134,11 @@ take k (MStack v i)
   | i0 >= 0 = VG.freeze $ VM.unsafeSlice i0 k v
   -- Now we now that i0 is negative.
   | otherwise = do
-    -- The length of r is i'.
-    r <- VG.freeze $ VM.unsafeTake i' v
-    -- The length of l has to be k-i'. So we have to drop n-(k-i')=n+i0.
-    l <- VG.freeze $ VM.unsafeDrop (n + i0) v
-    return $ l VG.++ r
+      -- The length of r is i'.
+      r <- VG.freeze $ VM.unsafeTake i' v
+      -- The length of l has to be k-i'. So we have to drop n-(k-i')=n+i0.
+      l <- VG.freeze $ VM.unsafeDrop (n + i0) v
+      return $ l VG.++ r
   where
     n = VM.length v
     i' = i + 1
@@ -222,7 +222,7 @@ foldKV 0 _ _ x _ = return x
 foldKV k i f x v = do
   x' <- f x <$> VM.unsafeRead v i
   -- Assume that i-1 is non-negative.
-  foldKV (k -1) (i -1) f x' v
+  foldKV (k - 1) (i - 1) f x' v
 
 -- | See 'foldM' but only over the @k@ youngest elements on the stack.
 --
@@ -235,9 +235,9 @@ foldKM k f x (MStack v i)
   | k <= i' = foldKV k i f x v
   -- Or not.
   | otherwise = do
-    x' <- foldKV i' i f x v
-    -- Continue from the end of the vector.
-    foldKV (k - i') (n -1) f x' v
+      x' <- foldKV i' i f x v
+      -- Continue from the end of the vector.
+      foldKV (k - i') (n - 1) f x' v
   where
     n = VM.length v
     i' = i + 1

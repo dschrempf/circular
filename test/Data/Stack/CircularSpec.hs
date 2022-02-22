@@ -38,7 +38,7 @@ instance Arbitrary (C.Stack VB.Vector Int) where
     s <- getSize
     n <- choose (1, s + 1)
     v <- VB.fromList <$> vector n
-    i <- choose (0, n -1)
+    i <- choose (0, n - 1)
     return $ runST $ C.fromVectorWithIndex i v >>= C.freeze
 
 se :: PrimMonad m => m (C.MStack VB.Vector (PrimState m) Int)
@@ -70,21 +70,21 @@ prop_push :: Int -> VB.Vector Int -> Bool
 prop_push x v
   | VB.length v == 0 = True
   | otherwise =
-    runST (C.fromVector v >>= C.push x >>= C.toVector)
-      == VB.tail v VB.++ VB.singleton x
+      runST (C.fromVector v >>= C.push x >>= C.toVector)
+        == VB.tail v VB.++ VB.singleton x
 
 prop_many_pushes :: [Int] -> VB.Vector Int -> Bool
 prop_many_pushes xs v
   | VB.length v == 0 = True
   | length xs <= VB.length v = True
   | otherwise =
-    runST
-      ( do
-          ms <- C.fromVector v
-          ms' <- foldM (flip C.push) ms xs
-          C.toVector ms'
-      )
-      == sol
+      runST
+        ( do
+            ms <- C.fromVector v
+            ms' <- foldM (flip C.push) ms xs
+            C.toVector ms'
+        )
+        == sol
   where
     nl = length xs
     nv = VB.length v
@@ -99,18 +99,18 @@ prop_push_take :: Int -> [Int] -> VB.Vector Int -> Bool
 prop_push_take k l v
   | VB.length v == 0 = True
   | otherwise =
-    -- traceShow
-    --   ( "Input:" ++ show k ++ " " ++ show l ++ " " ++ show v
-    --       ++ " k': "
-    --       ++ show k'
-    --       ++ " Stack full: "
-    --       ++ show stackFull
-    --       ++ " Stack take: "
-    --       ++ show stackTake
-    --       ++ " Sol: "
-    --       ++ show solution
-    --   ) $
-    stackTake == solution
+      -- traceShow
+      --   ( "Input:" ++ show k ++ " " ++ show l ++ " " ++ show v
+      --       ++ " k': "
+      --       ++ show k'
+      --       ++ " Stack full: "
+      --       ++ show stackFull
+      --       ++ " Stack take: "
+      --       ++ show stackTake
+      --       ++ " Sol: "
+      --       ++ show solution
+      --   ) $
+      stackTake == solution
   where
     -- stackFull = runST $ do
     --   m <- C.fromVector v
@@ -142,7 +142,7 @@ prop_fold_independent_of_index :: VB.Vector Int -> Bool
 prop_fold_independent_of_index v
   | VB.length v == 0 = True
   | otherwise = do
-    [solV] == nub solSs
+      [solV] == nub solSs
   where
     n = VB.length v
     solV = VB.sum v
