@@ -70,7 +70,7 @@ data MStack v s a = MStack
 -- O(n).
 replicate :: (VG.Vector v a, PrimMonad m) => Int -> a -> m (MStack v (PrimState m) a)
 replicate n x
-  | n <= 0 = error "empty: maximum size must be one or larger"
+  | n <= 0 = error "replicate: maximum size must be one or larger"
   | otherwise = do
       v <- VM.replicate n x
       return $ MStack v 0
@@ -126,8 +126,8 @@ toVector (MStack v i) = do
 -- O(k).
 take :: (VG.Vector v a, PrimMonad m) => Int -> MStack v (PrimState m) a -> m (v a)
 take k (MStack v i)
-  | k < 0 = error "toVectorN: negative k"
-  | k > n = error "toVectorN: circular stack too small"
+  | k < 0 = error "take: negative k"
+  | k > n = error "take: circular stack too small"
   | k == 0 = return VG.empty
   -- We know now that k is in [1, n] and check if all k elements can be taken in
   -- one go.
