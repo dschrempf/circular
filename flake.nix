@@ -19,11 +19,9 @@
         circular-dev = pkgs.haskell.lib.doBenchmark circular;
       in
       {
-        packages.circular = circular;
+        packages.default = circular;
 
-        defaultPackage = circular;
-
-        devShell = hpkgs.shellFor {
+        devShells.default = hpkgs.shellFor {
           packages = _: [ circular-dev ];
           buildInputs = with pkgs; [
             bashInteractive
