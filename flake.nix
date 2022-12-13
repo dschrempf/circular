@@ -1,5 +1,5 @@
 {
-  description = "Haskell development environment";
+  description = "Circular stacks";
 
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
