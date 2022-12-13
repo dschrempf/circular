@@ -15,8 +15,6 @@
         "circular"
       ];
       thisGhcVersion = "ghc943";
-      # # Only required for projects with multiple packages.
-      # hMkPackage = h: n: h.callCabal2nix n (./. + "/${n}") { };
       hOverlay = selfn: supern: {
         haskell = supern.haskell // {
           packageOverrides = selfh: superh:
