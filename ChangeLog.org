@@ -1,5 +1,6 @@
 * Revision history for circular
 ** Unreleased changes
+- GHC 9.8
 
 ** 0.4.0.3
 - Tooling and compilation with GHC 9.2.3.
